@@ -1,499 +1,428 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Word教材 閲覧・学習アプリ (Firebase & Mammoth.js)</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Mammoth.js CDN (Word docx -> HTML 変換用) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-    <!-- FontAwesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-        /* Wordで変換したHTMLの装飾スタイル */
-        .doc-content h1 { font-size: 1.5rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.25rem; }
-        .doc-content h2 { font-size: 1.25rem; font-weight: bold; margin-top: 0.85rem; margin-bottom: 0.4rem; color: #1f2937; }
-        .doc-content h3 { font-size: 1.1rem; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.3rem; }
-        .doc-content p { margin-bottom: 0.75rem; line-height: 1.6; color: #374151; }
-        .doc-content ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 0.75rem; }
-        .doc-content ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 0.75rem; }
-        .doc-content table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
-        .doc-content table, .doc-content th, .doc-content td { border: 1px solid #d1d5db; padding: 0.5rem; }
-        .doc-content th { background-color: #f3f4f6; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>問題・解答データ閲覧アプリ</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- docx-preview Library (Wordファイルをブラウザ上で高精度レンダリング) -->
+  <script src="https://unpkg.com/jszip/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.1.15/dist/docx-preview.min.js"></script>
+  
+  <!-- LZ-String Library (データ圧縮用) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+
+  <!-- Firebase Web SDK (v10) Module Script -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+      getAuth, 
+      GoogleAuthProvider, 
+      signInWithPopup, 
+      signOut, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { 
+      getFirestore, 
+      doc, 
+      setDoc, 
+      getDoc, 
+      collection, 
+      getDocs, 
+      query, 
+      orderBy, 
+      serverTimestamp,
+      deleteDoc
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // 1. 提供されたFirebase設定情報
+    const firebaseConfig = {
+      apiKey: "AIzaSyAat1qoigRFAQtIwCHweMeO6P0qTmR10_8",
+      authDomain: "mondai-choco.firebaseapp.com",
+      projectId: "mondai-choco",
+      appId: "1:41081435290:web:f5237845a870e11e719b23"
+    };
+
+    // Firebase 初期化
+    let app, auth, db;
+    let currentUser = null;
+    let selectedDocId = null;
+
+    try {
+      app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+      console.log("Firebase initialized successfully.");
+    } catch (e) {
+      console.error("Firebase initialization failed:", e);
+      alert("Firebaseの初期化に失敗しました。設定を確認してください。");
+    }
+
+    // 認証状態の監視
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      updateAuthUI(user);
+      if (user) {
+        loadDocumentList();
+      } else {
+        clearDocumentView();
+        document.getElementById('doc-list').innerHTML = '<p class="text-gray-500 text-sm italic p-2">ログインするとデータが表示されます。</p>';
+      }
+    });
+
+    // ログインUIの更新
+    function updateAuthUI(user) {
+      const authStatus = document.getElementById('auth-status');
+      const loginBtn = document.getElementById('login-btn');
+      const logoutBtn = document.getElementById('logout-btn');
+      const userInfo = document.getElementById('user-info');
+      const userPhoto = document.getElementById('user-photo');
+      const userName = document.getElementById('user-name');
+      const mainContent = document.getElementById('main-content');
+
+      if (user) {
+        authStatus.innerText = "ログイン中";
+        authStatus.className = "px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-semibold";
+        loginBtn.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+        userInfo.classList.remove('hidden');
+        userPhoto.src = user.photoURL || 'https://via.placeholder.com/40';
+        userName.innerText = user.displayName || user.email;
+        mainContent.classList.remove('opacity-50', 'pointer-events-none');
+      } else {
+        authStatus.innerText = "未ログイン";
+        authStatus.className = "px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold";
+        loginBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        userInfo.classList.add('hidden');
+        mainContent.classList.add('opacity-50', 'pointer-events-none');
+      }
+    }
+
+    // Googleログイン処理
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      const provider = new GoogleAuthProvider();
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (error) {
+        console.error("Login failed:", error);
+        alert(`ログインエラー: ${error.message}`);
+      }
+    });
+
+    // ログアウト処理
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error("Logout failed:", error);
+      }
+    });
+
+    // Wordファイルの読み込みとプレビュー
+    const fileInput = document.getElementById('word-file-input');
+    const previewContainer = document.getElementById('docx-container');
+    const loadingSpinner = document.getElementById('loading-spinner');
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      if (!currentUser) {
+        alert("ファイルを保存するにはGoogleログインが必要です。");
+        return;
+      }
+
+      const fileName = file.name;
+      loadingSpinner.classList.remove('hidden');
+
+      try {
+        // 1. docx-preview を使用してブラウザ上に描画
+        const arrayBuffer = await file.arrayBuffer();
+        previewContainer.innerHTML = '';
+        await docx.renderAsync(arrayBuffer, previewContainer);
+
+        // 2. Base64文字列に変換してFirestoreに保管（圧縮処理付き）
+        const base64String = await arrayBufferToBase64(arrayBuffer);
+        const compressedData = LZString.compressToUTF16(base64String);
+
+        // ファイルサイズ検証（約1MB制限）
+        if (compressedData.length > 1000000) {
+          alert("ファイルサイズが大きすぎるためデータベースに保存できません。画像等を減らしたWordファイルをお試しください。");
+          loadingSpinner.classList.add('hidden');
+          return;
+        }
+
+        const docId = `doc_${Date.now()}`;
+        const userDocRef = doc(db, "users", currentUser.uid, "documents", docId);
+
+        await setDoc(userDocRef, {
+          title: fileName,
+          fileData: compressedData,
+          updatedAt: serverTimestamp()
+        });
+
+        alert("Wordファイルを保存しました！");
+        loadDocumentList();
+        selectedDocId = docId;
+
+      } catch (error) {
+        console.error("Word処理エラー:", error);
+        alert(`処理中にエラーが発生しました: ${error.message}`);
+      } finally {
+        loadingSpinner.classList.add('hidden');
+        fileInput.value = ''; // 入力をリセット
+      }
+    });
+
+    // ArrayBuffer から Base64 への変換関数
+    function arrayBufferToBase64(buffer) {
+      return new Promise((resolve) => {
+        const blob = new Blob([buffer]);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const dataUrl = event.target.result;
+          const base64 = dataUrl.split(',')[1];
+          resolve(base64);
+        };
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // Base64 から ArrayBuffer への変換関数
+    function base64ToArrayBuffer(base64) {
+      const binaryString = window.atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    // 保存されている文書一覧の取得
+    async function loadDocumentList() {
+      if (!currentUser) return;
+      const docListContainer = document.getElementById('doc-list');
+      docListContainer.innerHTML = '<p class="text-gray-400 text-sm">読み込み中...</p>';
+
+      try {
+        const q = query(
+          collection(db, "users", currentUser.uid, "documents"),
+          orderBy("updatedAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+          docListContainer.innerHTML = '<p class="text-gray-500 text-sm italic p-2">保存された問題データはありません。</p>';
+          return;
+        }
+
+        docListContainer.innerHTML = '';
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const item = document.createElement('div');
+          const isSelected = docSnap.id === selectedDocId;
+
+          item.className = `flex items-center justify-between p-3 rounded-lg border cursor-pointer transition ${
+            isSelected ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-gray-50 border-gray-200'
+          }`;
+
+          item.innerHTML = `
+            <div class="truncate flex-1 mr-2" title="${data.title}">
+              <span class="text-sm text-gray-800">${data.title}</span>
+            </div>
+            <button class="delete-btn text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50" data-id="${docSnap.id}">
+              削除
+            </button>
+          `;
+
+          // 文書選択イベント
+          item.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-btn')) return;
+            selectDocument(docSnap.id, data.title, data.fileData);
+          });
+
+          // 削除ボタンイベント
+          const deleteBtn = item.querySelector('.delete-btn');
+          deleteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm(`「${data.title}」を削除してもよろしいですか？`)) {
+              await deleteDoc(doc(db, "users", currentUser.uid, "documents", docSnap.id));
+              if (selectedDocId === docSnap.id) {
+                clearDocumentView();
+              }
+              loadDocumentList();
+            }
+          });
+
+          docListContainer.appendChild(item);
+        });
+
+      } catch (error) {
+        console.error("リスト読み込みエラー:", error);
+        docListContainer.innerHTML = '<p class="text-red-500 text-sm p-2">読み込みに失敗しました。</p>';
+      }
+    }
+
+    // 文書の選択・描画
+    async function selectDocument(id, title, compressedData) {
+      selectedDocId = id;
+      loadingSpinner.classList.remove('hidden');
+      document.getElementById('doc-title').innerText = title;
+
+      try {
+        const base64String = LZString.decompressFromUTF16(compressedData);
+        const arrayBuffer = base64ToArrayBuffer(base64String);
+
+        previewContainer.innerHTML = '';
+        await docx.renderAsync(arrayBuffer, previewContainer);
+
+        // リストの選択ハイライト更新
+        loadDocumentList();
+      } catch (error) {
+        console.error("描画エラー:", error);
+        alert("ファイルの表示に失敗しました。");
+      } finally {
+        loadingSpinner.classList.add('hidden');
+      }
+    }
+
+    // ビューのクリア
+    function clearDocumentView() {
+      selectedDocId = null;
+      document.getElementById('doc-title').innerText = '未選択';
+      previewContainer.innerHTML = `
+        <div class="text-center text-gray-400 py-20">
+          <svg class="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          <p>左側のリストからファイルを選択するか、新しいWordファイルをアップロードしてください。</p>
+        </div>
+      `;
+    }
+  </script>
+
+  <style>
+    /* Word文書プレビューコンテナ用カスタムスタイル */
+    .docx-viewer {
+      background-color: #f8fafc;
+      min-height: 500px;
+      padding: 20px;
+    }
+    .docx-viewer .docx-wrapper {
+      background: transparent !important;
+      padding: 0 !important;
+    }
+    .docx-viewer section.docx {
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+      margin-bottom: 20px !important;
+    }
+  </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col">
 
-    <!-- ヘッダー -->
-    <header class="bg-indigo-600 text-white shadow-md">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <i class="fa-solid me-2 fa-book-bookmark text-2xl"></i>
-                <h1 class="text-xl font-bold tracking-tight">Word学習クラウドノート</h1>
-            </div>
-            <!-- ユーザープロフィール / ログインボタン -->
-            <div id="user-section" class="flex items-center space-x-3">
-                <!-- JavaScriptでログイン状態に応じて描画されます -->
-            </div>
-        </div>
-    </header>
+  <!-- ヘッダー -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <h1 class="text-xl font-bold text-blue-600 flex items-center gap-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+          </svg>
+          問題データ閲覧Viewer
+        </h1>
+        <span id="auth-status" class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">初期化中...</span>
+      </div>
 
-    <!-- メインコンテンツ -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-        <!-- 左カラム: Firebase設定 & ドキュメントリスト (4/12) -->
-        <div class="lg:col-span-4 space-y-6">
-            
-            <!-- Firebase設定パネル (未設定時に強調表示) -->
-            <div id="firebase-config-card" class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                <div class="flex justify-between items-center mb-3">
-                    <h2 class="text-md font-semibold text-slate-700 flex items-center">
-                        <i class="fa-solid fa-key text-indigo-500 mr-2"></i>Firebase接続設定
-                    </h2>
-                    <span id="config-status-badge" class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-800 font-medium">未接続</span>
-                </div>
-                <p class="text-xs text-slate-500 mb-3">
-                    Firebaseコンソールから取得した `firebaseConfig` の値を入力してください（一度入力すると保存されます）。
-                </p>
-                <form id="config-form" class="space-y-2">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600">apiKey</label>
-                        <input type="text" id="cfg-apiKey" required class="w-full text-xs p-2 border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600">authDomain</label>
-                        <input type="text" id="cfg-authDomain" required class="w-full text-xs p-2 border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600">projectId</label>
-                        <input type="text" id="cfg-projectId" required class="w-full text-xs p-2 border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600">appId</label>
-                        <input type="text" id="cfg-appId" required class="w-full text-xs p-2 border rounded border-slate-300 focus:ring-1 focus:ring-indigo-500">
-                    </div>
-                    <button type="submit" class="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium py-2 px-3 rounded transition shadow-sm">
-                        設定を保存して接続
-                    </button>
-                </form>
-            </div>
-
-            <!-- ドキュメント管理パネル (ログイン時のみアクティブ) -->
-            <div id="document-management-card" class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 opacity-60 pointer-events-none">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-md font-semibold text-slate-700 flex items-center">
-                        <i class="fa-solid fa-folder-open text-indigo-500 mr-2"></i>問題・解答ファイル
-                    </h2>
-                    <span id="doc-count" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">0件</span>
-                </div>
-
-                <!-- Wordファイルアップロードエリア -->
-                <div class="mb-4">
-                    <label class="block w-full cursor-pointer bg-indigo-50 hover:bg-indigo-100 border-2 border-dashed border-indigo-300 rounded-lg p-4 text-center transition">
-                        <i class="fa-solid fa-file-word text-indigo-600 text-2xl mb-1"></i>
-                        <span class="block text-xs font-semibold text-indigo-900">Word (.docx) をアップロード</span>
-                        <span class="block text-[10px] text-indigo-600 mt-0.5">解析してクラウドに保存します</span>
-                        <input type="file" id="word-file-input" accept=".docx" class="hidden">
-                    </label>
-                    <!-- ロード中表示 -->
-                    <div id="upload-spinner" class="hidden text-center py-2 text-xs text-indigo-600">
-                        <i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Wordファイルを変換・保存中...
-                    </div>
-                </div>
-
-                <!-- ファイル一覧リスト -->
-                <div id="document-list" class="space-y-2 max-h-[350px] overflow-y-auto pr-1">
-                    <p class="text-xs text-slate-400 text-center py-6">ログインすると、保存されたファイルが表示されます。</p>
-                </div>
-            </div>
+      <div class="flex items-center space-x-4">
+        <!-- ユーザー情報 -->
+        <div id="user-info" class="flex items-center space-x-2 hidden">
+          <img id="user-photo" src="" class="w-8 h-8 rounded-full border border-gray-300" alt="Avatar">
+          <span id="user-name" class="text-sm font-medium text-gray-700"></span>
         </div>
 
-        <!-- 右カラム: 選択したWord教材の閲覧表示エリア (8/12) -->
-        <div class="lg:col-span-8 flex flex-col space-y-6">
-            
-            <!-- ドキュメントビューアー -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-[500px]">
-                
-                <!-- ビューアーヘッダー -->
-                <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-xl">
-                    <div class="flex items-center space-x-2">
-                        <i class="fa-solid fa-book-open text-indigo-600"></i>
-                        <h3 id="current-doc-title" class="font-semibold text-slate-800 text-sm sm:text-base">
-                            ファイルが選択されていません
-                        </h3>
-                    </div>
-                    <button id="deselect-btn" class="hidden text-xs text-slate-500 hover:text-slate-800 bg-white border border-slate-300 px-2.5 py-1 rounded shadow-sm">
-                        <i class="fa-solid fa-xmark mr-1"></i>閉じる
-                    </button>
-                </div>
+        <!-- ログイン・ログアウトボタン -->
+        <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C6.721,2,2,6.721,2,12.545s4.721,10.545,10.545,10.545c6.241,0,10.323-4.39,10.323-10.502c0-0.709-0.063-1.352-0.18-1.951H12.545z"/>
+          </svg>
+          Googleでログイン
+        </button>
+        <button id="logout-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-3 py-1.5 rounded-lg text-sm transition hidden">
+          ログアウト
+        </button>
+      </div>
+    </div>
+  </header>
 
-                <!-- 表示コンテンツ -->
-                <div class="p-6 flex-1 overflow-y-auto">
-                    <!-- 初期未選択表示 -->
-                    <div id="empty-viewer-state" class="h-full flex flex-col items-center justify-center text-center py-16 text-slate-400">
-                        <i class="fa-regular fa-file-lines text-5xl mb-3 text-slate-300"></i>
-                        <p class="text-sm font-medium text-slate-600">左側のリストからファイルを選択するか<br>新しいWordファイルをアップロードしてください</p>
-                        <p class="text-xs text-slate-400 mt-2">（Word内のテキスト、見出し、表などが自動で展開されます）</p>
-                    </div>
+  <!-- メインコンテンツ -->
+  <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-6 opacity-50 pointer-events-none transition-opacity">
+    
+    <!-- サイドバー：ファイル一覧＆アップロード -->
+    <section class="md:col-span-1 flex flex-col space-y-4">
+      
+      <!-- アップロードエリア -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1">
+          <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+          </svg>
+          Wordファイル追加 (.docx)
+        </h2>
+        <label class="block w-full border-2 border-dashed border-slate-300 hover:border-blue-400 bg-slate-50 hover:bg-blue-50/50 p-4 rounded-lg text-center cursor-pointer transition">
+          <span class="text-xs text-gray-600 block">ファイルを選択</span>
+          <span class="text-[10px] text-gray-400 block mt-1">下線や装飾も維持して表示</span>
+          <input type="file" id="word-file-input" accept=".docx" class="hidden" />
+        </label>
+      </div>
 
-                    <!-- 実際にWordコンテンツが入る領域 -->
-                    <div id="document-content" class="doc-content hidden text-slate-800">
-                    </div>
-                </div>
-            </div>
-
-            <!-- アラート／通知メッセージ用メッセージボックス -->
-            <div id="notification" class="hidden p-3 rounded-lg text-xs font-medium"></div>
-
+      <!-- ファイル一覧 -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col">
+        <h2 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1">
+          <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+          </svg>
+          保存済み問題一覧
+        </h2>
+        <div id="doc-list" class="space-y-2 flex-1 overflow-y-auto max-h-[500px]">
+          <!-- 一覧がJavaScriptにより追加されます -->
         </div>
-    </main>
+      </div>
 
-    <!-- フッター -->
-    <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
-        <p>Word学習クラウドノート - Powered by Firebase & Mammoth.js</p>
-    </footer>
+    </section>
 
-    <!-- Firebase SDK (v10+ ES Modules) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { 
-            getAuth, 
-            GoogleAuthProvider, 
-            signInWithPopup, 
-            signOut, 
-            onAuthStateChanged 
-        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { 
-            getFirestore, 
-            collection, 
-            addDoc, 
-            deleteDoc, 
-            doc, 
-            onSnapshot, 
-            query, 
-            orderBy, 
-            serverTimestamp 
-        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    <!-- メインビュー：Word閲覧エリア -->
+    <section class="md:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+      
+      <!-- タイトルバー -->
+      <div class="border-b border-slate-200 px-6 py-3 bg-slate-50/50 flex justify-between items-center">
+        <h2 id="doc-title" class="font-bold text-slate-800 text-base truncate">未選択</h2>
+        <div id="loading-spinner" class="hidden flex items-center gap-2 text-xs text-blue-600">
+          <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          処理中...
+        </div>
+      </div>
 
-        // アプリケーション状態管理
-        let app, auth, db;
-        let currentUser = null;
-        let unsubscribeDocs = null;
-        let currentDocuments = [];
+      <!-- Word描画ターゲットエリア -->
+      <div id="docx-container" class="docx-viewer flex-1 overflow-y-auto">
+        <div class="text-center text-gray-400 py-20">
+          <svg class="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          <p>左側のリストからファイルを選択するか、新しいWordファイルをアップロードしてください。</p>
+        </div>
+      </div>
 
-        // UI要素参照
-        const configCard = document.getElementById('firebase-config-card');
-        const configStatusBadge = document.getElementById('config-status-badge');
-        const docManagementCard = document.getElementById('document-management-card');
-        const userSection = document.getElementById('user-section');
-        const docList = document.getElementById('document-list');
-        const docCount = document.getElementById('doc-count');
-        const fileInput = document.getElementById('word-file-input');
-        const uploadSpinner = document.getElementById('upload-spinner');
-        const currentDocTitle = document.getElementById('current-doc-title');
-        const emptyViewerState = document.getElementById('empty-viewer-state');
-        const documentContent = document.getElementById('document-content');
-        const deselectBtn = document.getElementById('deselect-btn');
-        const notification = document.getElementById('notification');
+    </section>
 
-        // 通知メッセージ表示用関数
-        function showNotification(message, isError = false) {
-            notification.textContent = message;
-            notification.className = `p-3 rounded-lg text-xs font-medium ${
-                isError ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-            }`;
-            notification.classList.remove('hidden');
-            setTimeout(() => {
-                notification.classList.add('hidden');
-            }, 4000);
-        }
+  </main>
 
-        // 初期ロード時：ローカルストレージからFirebase設定をチェック
-        window.addEventListener('DOMContentLoaded', () => {
-            const savedConfig = localStorage.getItem('firebase_config');
-            if (savedConfig) {
-                try {
-                    const config = JSON.parse(savedConfig);
-                    fillConfigForm(config);
-                    initFirebase(config);
-                } catch (e) {
-                    console.error("Config parse error", e);
-                }
-            }
-        });
-
-        // 設定フォームの自動埋め込み
-        function fillConfigForm(config) {
-            document.getElementById('cfg-apiKey').value = config.apiKey || '';
-            document.getElementById('cfg-authDomain').value = config.authDomain || '';
-            document.getElementById('cfg-projectId').value = config.projectId || '';
-            document.getElementById('cfg-appId').value = config.appId || '';
-        }
-
-        // フォーム送信時：Firebase設定の保存と初期化
-        document.getElementById('config-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const config = {
-                apiKey: document.getElementById('cfg-apiKey').value.trim(),
-                authDomain: document.getElementById('cfg-authDomain').value.trim(),
-                projectId: document.getElementById('cfg-projectId').value.trim(),
-                appId: document.getElementById('cfg-appId').value.trim()
-            };
-            localStorage.setItem('firebase_config', JSON.stringify(config));
-            initFirebase(config);
-        });
-
-        // Firebase 初期化処理
-        function initFirebase(config) {
-            try {
-                app = initializeApp(config);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                configStatusBadge.textContent = "接続済み";
-                configStatusBadge.className = "px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800 font-medium";
-
-                // 認証状態の監視設定
-                onAuthStateChanged(auth, (user) => {
-                    currentUser = user;
-                    updateUserUI(user);
-                    if (user) {
-                        // ログイン時：UIのアクティブ化とドキュメント読み込み
-                        docManagementCard.classList.remove('opacity-60', 'pointer-events-none');
-                        listenToUserDocuments(user.uid);
-                    } else {
-                        // ログアウト時：クリーンアップ
-                        docManagementCard.classList.add('opacity-60', 'pointer-events-none');
-                        if (unsubscribeDocs) unsubscribeDocs();
-                        resetDocumentList();
-                        resetViewer();
-                    }
-                });
-
-                showNotification("Firebaseに正常に接続されました。");
-            } catch (error) {
-                console.error("Firebase init error:", error);
-                configStatusBadge.textContent = "接続エラー";
-                configStatusBadge.className = "px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-800 font-medium";
-                showNotification("Firebaseの初期化に失敗しました。設定値を確認してください。", true);
-            }
-        }
-
-        // ユーザー認証ヘッダーUIの更新
-        function updateUserUI(user) {
-            if (user) {
-                userSection.innerHTML = `
-                    <div class="flex items-center space-x-2">
-                        <img src="${user.photoURL || 'https://via.placeholder.com/32'}" alt="${user.displayName}" class="w-8 h-8 rounded-full border-2 border-white/80">
-                        <span class="text-xs font-medium hidden sm:inline-block">${user.displayName}</span>
-                    </div>
-                    <button id="logout-btn" class="bg-indigo-700 hover:bg-indigo-800 text-white text-xs px-3 py-1.5 rounded-md transition border border-indigo-500">
-                        ログアウト
-                    </button>
-                `;
-                document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
-            } else {
-                userSection.innerHTML = `
-                    <button id="login-btn" class="bg-white text-indigo-600 hover:bg-indigo-50 text-xs font-semibold px-3 py-1.5 rounded-md transition shadow-sm flex items-center space-x-1.5">
-                        <i class="fa-brands fa-google text-indigo-500"></i>
-                        <span>Googleでログイン</span>
-                    </button>
-                `;
-                document.getElementById('login-btn').addEventListener('click', handleGoogleLogin);
-            }
-        }
-
-        // Google ログイン処理
-        async function handleGoogleLogin() {
-            if (!auth) {
-                showNotification("先にFirebase設定を行ってください。", true);
-                return;
-            }
-            const provider = new GoogleAuthProvider();
-            try {
-                await signInWithPopup(auth, provider);
-                showNotification("ログインしました。");
-            } catch (error) {
-                console.error("Login error:", error);
-                showNotification("ログイン処理に失敗しました: " + error.message, true);
-            }
-        }
-
-        // ユーザーのFirestoreコレクションのリアルタイム監視 (`users/{uid}/documents`)
-        function listenToUserDocuments(uid) {
-            if (unsubscribeDocs) unsubscribeDocs();
-
-            const docsRef = collection(db, "users", uid, "documents");
-            const q = query(docsRef, orderBy("createdAt", "desc"));
-
-            unsubscribeDocs = onSnapshot(q, (snapshot) => {
-                currentDocuments = [];
-                snapshot.forEach((docSnap) => {
-                    currentDocuments.push({
-                        id: docSnap.id,
-                        ...docSnap.data()
-                    });
-                });
-                renderDocumentList(currentDocuments);
-            }, (error) => {
-                console.error("Firestore read error:", error);
-                showNotification("データの読み込みエラーが発生しました。", true);
-            });
-        }
-
-        // ドキュメント一覧リストの描画
-        function renderDocumentList(docs) {
-            docCount.textContent = `${docs.length}件`;
-
-            if (docs.length === 0) {
-                docList.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">保存されたドキュメントはありません。</p>`;
-                return;
-            }
-
-            docList.innerHTML = '';
-            docs.forEach((docData) => {
-                const dateStr = docData.createdAt ? new Date(docData.createdAt.toDate()).toLocaleDateString('ja-JP') : '保存中...';
-                
-                const itemDiv = document.createElement('div');
-                itemDiv.className = `p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-200 transition cursor-pointer flex justify-between items-center group`;
-                itemDiv.dataset.id = docData.id;
-
-                itemDiv.innerHTML = `
-                    <div class="flex items-center space-x-2.5 overflow-hidden mr-2">
-                        <i class="fa-solid fa-file-lines text-indigo-500 flex-shrink-0"></i>
-                        <div class="truncate">
-                            <p class="text-xs font-semibold text-slate-700 truncate group-hover:text-indigo-600">${escapeHtml(docData.title)}</p>
-                            <p class="text-[10px] text-slate-400">${dateStr}</p>
-                        </div>
-                    </div>
-                    <button class="delete-btn text-slate-300 hover:text-red-500 p-1.5 transition flex-shrink-0" title="削除">
-                        <i class="fa-solid fa-trash-can text-xs"></i>
-                    </button>
-                `;
-
-                // クリックしてドキュメントを閲覧
-                itemDiv.addEventListener('click', (e) => {
-                    if (e.target.closest('.delete-btn')) return; // 削除ボタンクリック時はスキップ
-                    selectDocument(docData);
-                });
-
-                // 削除ボタンのリスナー
-                const deleteBtn = itemDiv.querySelector('.delete-btn');
-                deleteBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    deleteDocument(docData.id, docData.title);
-                });
-
-                docList.appendChild(itemDiv);
-            });
-        }
-
-        // Word (.docx) ファイルの読み込みとMammoth.jsによるHTML変換
-        fileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            if (!currentUser) {
-                showNotification("ファイルをアップロードするにはログインが必要です。", true);
-                return;
-            }
-
-            // ファイル名からタイトルを生成 (.docx を削除)
-            const title = file.name.replace(/\.[^/.]+$/, "");
-
-            uploadSpinner.classList.remove('hidden');
-
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                
-                // Mammoth.js で Word から HTML に変換
-                const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
-                const htmlContent = result.value; // 生成されたHTML文字列
-
-                // Firestoreへ保存 (`users/{uid}/documents`)
-                const docsRef = collection(db, "users", currentUser.uid, "documents");
-                const newDocRef = await addDoc(docsRef, {
-                    title: title,
-                    contentHtml: htmlContent,
-                    createdAt: serverTimestamp()
-                });
-
-                showNotification(`「${title}」の保存に成功しました！`);
-                
-                // アップロードしたファイルをそのまま自動選択
-                selectDocument({
-                    id: newDocRef.id,
-                    title: title,
-                    contentHtml: htmlContent
-                });
-
-            } catch (error) {
-                console.error("Word processing/Firestore error:", error);
-                showNotification("Wordファイルの処理中にエラーが発生しました。", true);
-            } finally {
-                uploadSpinner.classList.add('hidden');
-                fileInput.value = ''; // リセット
-            }
-        });
-
-        // ドキュメントを表示エリアに読み込み
-        function selectDocument(docData) {
-            currentDocTitle.textContent = docData.title;
-            documentContent.innerHTML = docData.contentHtml || '<p class="text-slate-400 italic">内容が空です。</p>';
-            
-            emptyViewerState.classList.add('hidden');
-            documentContent.classList.remove('hidden');
-            deselectBtn.classList.remove('hidden');
-        }
-
-        // 表示のリセット
-        function resetViewer() {
-            currentDocTitle.textContent = "ファイルが選択されていません";
-            documentContent.innerHTML = "";
-            emptyViewerState.classList.remove('hidden');
-            documentContent.classList.add('hidden');
-            deselectBtn.classList.add('hidden');
-        }
-
-        deselectBtn.addEventListener('click', resetViewer);
-
-        // ドキュメント削除処理
-        async function deleteDocument(docId, title) {
-            if (!confirm(`「${title}」を削除してもよろしいですか？`)) return;
-
-            try {
-                const docRef = doc(db, "users", currentUser.uid, "documents", docId);
-                await deleteDoc(docRef);
-                showNotification(`「${title}」を削除しました。`);
-                
-                // 現在表示中のドキュメントが削除された場合はビューアーをクリア
-                if (currentDocTitle.textContent === title) {
-                    resetViewer();
-                }
-            } catch (error) {
-                console.error("Delete error:", error);
-                showNotification("削除に失敗しました。", true);
-            }
-        }
-
-        function resetDocumentList() {
-            docCount.textContent = "0件";
-            docList.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">ログインすると、保存されたファイルが表示されます。</p>`;
-        }
-
-        // XSS対策のエスケープ処理
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>"']/g, (m) => ({
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;'
-            })[m]);
-        }
-    </script>
 </body>
 </html>
