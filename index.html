@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>問題・解答データ閲覧アプリ</title>
+  <title>問題・解答データ閲覧・学習アプリ</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -48,39 +48,35 @@
       appId: "1:41081435290:web:f5237845a870e11e719b23"
     };
 
-    // Firebase 初期化
     let app, auth, db;
     let currentUser = null;
     let selectedDocId = null;
-    let activeTab = 'question'; // 'question' または 'answer'
-    let currentDocData = null; // 現在選択中のドキュメント全データ
+    let activeTab = 'question'; 
+    let currentDocData = null; 
+    let allDocuments = [];
+    let allPlaylists = [];
+    let currentMainView = 'documents'; // 'documents' または 'playlists'
 
     try {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       db = getFirestore(app);
-
-      // ログイン状態をローカルストレージに永続化する設定
-      setPersistence(auth, browserLocalPersistence).catch((error) => {
-        console.error("Persistence setting error:", error);
-      });
+      setPersistence(auth, browserLocalPersistence).catch(console.error);
     } catch (e) {
       console.error("Firebase initialization failed:", e);
-      alert("Firebaseの初期化に失敗しました。設定を確認してください。");
     }
 
-    // 認証状態の監視（リロード時にも確実に発火します）
+    // 認証状態の監視
     onAuthStateChanged(auth, async (user) => {
       currentUser = user;
       updateAuthUI(user);
       
       if (user) {
         try {
-          // リロード時にトークンを強制リフレッシュして確実に権限を通す
           await user.getIdToken(true);
-          await loadDocumentList();
+          await loadAllData();
         } catch (error) {
-          console.error("Token refresh or document load error:", error);
+          console.error("Auth initialization error:", error);
         }
       } else {
         clearDocumentView();
@@ -88,7 +84,6 @@
       }
     });
 
-    // ログインUIの更新
     function updateAuthUI(user) {
       const authStatus = document.getElementById('auth-status');
       const loginBtn = document.getElementById('login-btn');
@@ -117,27 +112,23 @@
       }
     }
 
-    // Googleログイン処理
     document.getElementById('login-btn').addEventListener('click', async () => {
       const provider = new GoogleAuthProvider();
       try {
         await signInWithPopup(auth, provider);
       } catch (error) {
-        console.error("Login failed:", error);
         alert(`ログインエラー: ${error.message}`);
       }
     });
 
-    // ログアウト処理
     document.getElementById('logout-btn').addEventListener('click', async () => {
       try {
         await signOut(auth);
       } catch (error) {
-        console.error("Logout failed:", error);
+        console.error(error);
       }
     });
 
-    // WordファイルをArrayBufferから圧縮用Base64へ変換するヘルパー
     function arrayBufferToBase64(buffer) {
       return new Promise((resolve) => {
         const blob = new Blob([buffer]);
@@ -157,36 +148,38 @@
       return bytes.buffer;
     }
 
-    // 保存・アロード処理
+    // データ保存処理
     const questionFileInput = document.getElementById('question-file-input');
     const answerFileInput = document.getElementById('answer-file-input');
+    const problemNameInput = document.getElementById('problem-name-input');
     const tagsInput = document.getElementById('tags-input');
     const saveBtn = document.getElementById('save-doc-btn');
     const loadingSpinner = document.getElementById('loading-spinner');
 
     saveBtn.addEventListener('click', async () => {
-      if (!currentUser) {
-        alert("ログインが必要です。");
-        return;
-      }
+      if (!currentUser) return;
 
       const qFile = questionFileInput.files[0];
       const aFile = answerFileInput.files[0];
+      const probName = problemNameInput.value.trim();
 
       if (!qFile) {
         alert("問題データ(.docx)のファイルを選択してください。");
         return;
       }
 
+      if (!probName) {
+        alert("問題の名前を入力してください。");
+        return;
+      }
+
       loadingSpinner.classList.remove('hidden');
 
       try {
-        // 問題ファイルの処理
         const qBuffer = await qFile.arrayBuffer();
         const qBase64 = await arrayBufferToBase64(qBuffer);
         const qCompressed = LZString.compressToUTF16(qBase64);
 
-        // 解答ファイルの処理 (任意)
         let aCompressed = null;
         if (aFile) {
           const aBuffer = await aFile.arrayBuffer();
@@ -194,9 +187,7 @@
           aCompressed = LZString.compressToUTF16(aBase64);
         }
 
-        // タグのパース (カンマ/スペース区切り)
-        const rawTags = tagsInput.value;
-        const tags = rawTags.split(/[, \s]+/)
+        const tags = tagsInput.value.split(/[, \s]+/)
           .map(t => t.replace(/^#/, '').trim())
           .filter(t => t.length > 0);
 
@@ -204,74 +195,112 @@
         const userDocRef = doc(db, "users", currentUser.uid, "documents", docId);
 
         await setDoc(userDocRef, {
-          title: qFile.name.replace(/\.docx$/i, ''),
+          title: probName,
+          fileName: qFile.name,
           questionData: qCompressed,
           answerData: aCompressed,
           tags: tags,
+          stats: { correct: 0, incorrect: 0 },
           updatedAt: serverTimestamp()
         });
 
-        alert("問題・解答データを保存しました！");
+        alert("問題データを保存しました！");
         
-        // フォームリセット
+        problemNameInput.value = '';
         questionFileInput.value = '';
         answerFileInput.value = '';
         tagsInput.value = '';
         
-        loadDocumentList();
+        loadAllData();
 
       } catch (error) {
         console.error("保存エラー:", error);
-        alert(`保存中にエラーが発生しました: ${error.message}`);
+        alert(`保存エラー: ${error.message}`);
       } finally {
         loadingSpinner.classList.add('hidden');
       }
     });
 
-    // ドキュメント一覧の読み込み（検索・タグフィルター連動）
-    let allDocuments = []; // 全取得データを保持
-
-    async function loadDocumentList() {
+    // すべてのデータの読み込み
+    async function loadAllData() {
       if (!currentUser) return;
-      const docListContainer = document.getElementById('doc-list');
-      docListContainer.innerHTML = '<p class="text-gray-400 text-sm p-2">読み込み中...</p>';
-
+      
       try {
-        const q = query(
-          collection(db, "users", currentUser.uid, "documents"),
-          orderBy("updatedAt", "desc")
-        );
-        const querySnapshot = await getDocs(q);
-
+        // ドキュメント取得
+        const qDocs = query(collection(db, "users", currentUser.uid, "documents"), orderBy("updatedAt", "desc"));
+        const snapDocs = await getDocs(qDocs);
         allDocuments = [];
-        querySnapshot.forEach((docSnap) => {
-          allDocuments.push({
-            id: docSnap.id,
-            ...docSnap.data()
-          });
-        });
+        snapDocs.forEach(d => allDocuments.push({ id: d.id, ...d.data() }));
 
-        renderDocumentList(allDocuments);
+        // プレイリスト取得
+        const qPlaylists = query(collection(db, "users", currentUser.uid, "playlists"), orderBy("updatedAt", "desc"));
+        const snapPlaylists = await getDocs(qPlaylists);
+        allPlaylists = [];
+        snapPlaylists.forEach(d => allPlaylists.push({ id: d.id, ...d.data() }));
+
+        renderCurrentView();
 
       } catch (error) {
-        console.error("リスト読み込みエラー:", error);
-        docListContainer.innerHTML = `<p class="text-red-500 text-sm p-2">読み込みに失敗しました。</p>`;
+        console.error("データ読み込みエラー:", error);
       }
     }
 
-    // リストの描画処理
-    function renderDocumentList(docsToRender) {
-      const docListContainer = document.getElementById('doc-list');
+    function renderCurrentView() {
+      if (currentMainView === 'documents') {
+        renderDocumentList(allDocuments);
+      } else {
+        renderPlaylistList(allPlaylists);
+      }
+    }
 
+    // ビュー切り替えタブ (問題一覧 / プレイリスト)
+    document.getElementById('nav-docs').addEventListener('click', () => {
+      currentMainView = 'documents';
+      document.getElementById('nav-docs').className = "flex-1 py-1.5 text-xs font-bold text-blue-600 bg-white rounded shadow-sm";
+      document.getElementById('nav-playlists').className = "flex-1 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700";
+      document.getElementById('search-input').placeholder = "タイトルや #タグ で検索...";
+      renderCurrentView();
+    });
+
+    document.getElementById('nav-playlists').addEventListener('click', () => {
+      currentMainView = 'playlists';
+      document.getElementById('nav-playlists').className = "flex-1 py-1.5 text-xs font-bold text-blue-600 bg-white rounded shadow-sm";
+      document.getElementById('nav-docs').className = "flex-1 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700";
+      document.getElementById('search-input').placeholder = "プレイリスト名で検索...";
+      renderCurrentView();
+    });
+
+    // プレイリスト新規作成モーダル・処理
+    document.getElementById('create-playlist-btn').addEventListener('click', async () => {
+      const name = prompt("作成するプレイリストの名前を入力してください:");
+      if (!name) return;
+
+      try {
+        const plId = `pl_${Date.now()}`;
+        await setDoc(doc(db, "users", currentUser.uid, "playlists", plId), {
+          name: name,
+          documentIds: [],
+          updatedAt: serverTimestamp()
+        });
+        loadAllData();
+      } catch (e) {
+        alert("作成に失敗しました: " + e.message);
+      }
+    });
+
+    // リスト描画：問題
+    function renderDocumentList(docsToRender) {
+      const container = document.getElementById('item-list');
       if (docsToRender.length === 0) {
-        docListContainer.innerHTML = '<p class="text-gray-500 text-sm italic p-2">該当する問題が見つかりません。</p>';
+        container.innerHTML = '<p class="text-gray-500 text-sm italic p-2">問題がありません。</p>';
         return;
       }
 
-      docListContainer.innerHTML = '';
+      container.innerHTML = '';
       docsToRender.forEach((data) => {
         const item = document.createElement('div');
         const isSelected = data.id === selectedDocId;
+        const stats = data.stats || { correct: 0, incorrect: 0 };
 
         item.className = `p-3 rounded-lg border cursor-pointer transition ${
           isSelected ? 'bg-blue-50 border-blue-400' : 'bg-white hover:bg-gray-50 border-gray-200'
@@ -284,13 +313,15 @@
         item.innerHTML = `
           <div class="flex items-center justify-between mb-1">
             <span class="text-sm font-semibold text-gray-800 truncate" title="${data.title}">${data.title}</span>
-            <button class="delete-btn text-xs text-red-400 hover:text-red-600 px-1 py-0.5" data-id="${data.id}">
-              削除
-            </button>
+            <button class="delete-btn text-xs text-red-400 hover:text-red-600 px-1 py-0.5" data-id="${data.id}">削除</button>
           </div>
-          <div class="flex flex-wrap items-center">
+          <div class="flex flex-wrap items-center gap-1 mb-2">
             ${tagsHtml}
-            ${data.answerData ? '<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-auto">解答あり</span>' : ''}
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-gray-500 border-t pt-1.5">
+            <span class="text-green-600 font-medium">○: ${stats.correct}</span>
+            <span class="text-red-600 font-medium">×: ${stats.incorrect}</span>
+            ${data.answerData ? '<span class="bg-green-100 text-green-700 px-1 rounded">解有</span>' : ''}
           </div>
         `;
 
@@ -299,61 +330,148 @@
           selectDocument(data);
         });
 
-        const deleteBtn = item.querySelector('.delete-btn');
-        deleteBtn.addEventListener('click', async (e) => {
+        item.querySelector('.delete-btn').addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (confirm(`「${data.title}」を削除してもよろしいですか？`)) {
+          if (confirm(`「${data.title}」を削除しますか？`)) {
             await deleteDoc(doc(db, "users", currentUser.uid, "documents", data.id));
-            if (selectedDocId === data.id) {
-              clearDocumentView();
-            }
-            loadDocumentList();
+            if (selectedDocId === data.id) clearDocumentView();
+            loadAllData();
           }
         });
 
-        docListContainer.appendChild(item);
+        container.appendChild(item);
       });
     }
 
-    // タグ・キーワード検索
-    const searchInput = document.getElementById('search-input');
-    searchInput.addEventListener('input', (e) => {
-      const queryText = e.target.value.toLowerCase().trim().replace(/^#/, '');
-      if (!queryText) {
-        renderDocumentList(allDocuments);
+    // リスト描画：プレイリスト
+    function renderPlaylistList(playlistsToRender) {
+      const container = document.getElementById('item-list');
+      if (playlistsToRender.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-sm italic p-2">プレイリストがありません。</p>';
         return;
       }
 
-      const filtered = allDocuments.filter(doc => {
-        const titleMatch = doc.title.toLowerCase().includes(queryText);
-        const tagMatch = (doc.tags || []).some(t => t.toLowerCase().includes(queryText));
-        return titleMatch || tagMatch;
-      });
+      container.innerHTML = '';
+      playlistsToRender.forEach((pl) => {
+        const item = document.createElement('div');
+        const count = (pl.documentIds || []).length;
 
-      renderDocumentList(filtered);
+        item.className = 'p-3 rounded-lg border bg-white hover:bg-gray-50 border-gray-200 cursor-pointer transition';
+        item.innerHTML = `
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm font-bold text-gray-800">${pl.name}</span>
+            <button class="delete-pl text-xs text-red-400 hover:text-red-600 px-1">削除</button>
+          </div>
+          <p class="text-xs text-gray-500">収録問題数: ${count}問</p>
+        `;
+
+        item.addEventListener('click', (e) => {
+          if (e.target.classList.contains('delete-pl')) return;
+          playPlaylist(pl);
+        });
+
+        item.querySelector('.delete-pl').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm(`プレイリスト「${pl.name}」を削除しますか？`)) {
+            await deleteDoc(doc(db, "users", currentUser.uid, "playlists", pl.id));
+            loadAllData();
+          }
+        });
+
+        container.appendChild(item);
+      });
+    }
+
+    // 検索機能
+    document.getElementById('search-input').addEventListener('input', (e) => {
+      const queryText = e.target.value.toLowerCase().trim();
+      if (!queryText) {
+        renderCurrentView();
+        return;
+      }
+
+      if (currentMainView === 'documents') {
+        const filtered = allDocuments.filter(doc => {
+          const titleMatch = doc.title.toLowerCase().includes(queryText);
+          const tagMatch = (doc.tags || []).some(t => t.toLowerCase().includes(queryText));
+          return titleMatch || tagMatch;
+        });
+        renderDocumentList(filtered);
+      } else {
+        const filtered = allPlaylists.filter(pl => pl.name.toLowerCase().includes(queryText));
+        renderPlaylistList(filtered);
+      }
     });
 
-    // ドキュメント選択・レンダリング
+    // ドキュメント選択
     function selectDocument(docData) {
       selectedDocId = docData.id;
       currentDocData = docData;
       document.getElementById('doc-title').innerText = docData.title;
 
-      // タブの表示・非表示コントロール
       const answerTabBtn = document.getElementById('tab-answer');
       if (docData.answerData) {
         answerTabBtn.classList.remove('hidden');
       } else {
         answerTabBtn.classList.add('hidden');
-        activeTab = 'question'; // 強制的に問題タブへ
+        activeTab = 'question';
       }
 
       updateTabUI();
       renderActiveTabContent();
-      renderDocumentList(allDocuments); // ハイライト表示の更新
+      renderCurrentView();
+      document.getElementById('stats-bar').classList.remove('hidden');
+      updateStatsDisplay();
     }
 
-    // タブ切り替え処理
+    // プレイリストの連続再生/学習モード
+    async function playPlaylist(pl) {
+      if (!pl.documentIds || pl.documentIds.length === 0) {
+        alert("このプレイリストには問題が登録されていません。");
+        return;
+      }
+      // 最初の問題を選択
+      const firstDocId = pl.documentIds[0];
+      const targetDoc = allDocuments.find(d => d.id === firstDocId);
+      if (targetDoc) {
+        selectDocument(targetDoc);
+        alert(`プレイリスト「${pl.name}」の再生を開始します。`);
+      } else {
+        alert("該当する問題データが見つかりませんでした。");
+      }
+    }
+
+    // 正解・不正解の記録ボタン
+    document.getElementById('btn-correct').addEventListener('click', () => recordResult('correct'));
+    document.getElementById('btn-incorrect').addEventListener('click', () => recordResult('incorrect'));
+
+    async function recordResult(type) {
+      if (!currentDocData || !currentUser) return;
+
+      const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
+      if (type === 'correct') stats.correct++;
+      else stats.incorrect++;
+
+      currentDocData.stats = stats;
+      updateStatsDisplay();
+
+      try {
+        const docRef = doc(db, "users", currentUser.uid, "documents", currentDocData.id);
+        await setDoc(docRef, { stats: stats }, { merge: true });
+        renderCurrentView();
+      } catch (e) {
+        console.error("記録の保存に失敗:", e);
+      }
+    }
+
+    function updateStatsDisplay() {
+      if (!currentDocData) return;
+      const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
+      document.getElementById('stat-correct-count').innerText = stats.correct;
+      document.getElementById('stat-incorrect-count').innerText = stats.incorrect;
+    }
+
+    // タブ切替
     document.getElementById('tab-question').addEventListener('click', () => {
       activeTab = 'question';
       updateTabUI();
@@ -369,7 +487,6 @@
     function updateTabUI() {
       const qTab = document.getElementById('tab-question');
       const aTab = document.getElementById('tab-answer');
-
       if (activeTab === 'question') {
         qTab.className = "px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 text-sm focus:outline-none";
         aTab.className = "px-4 py-2 font-medium text-gray-500 hover:text-gray-700 text-sm focus:outline-none";
@@ -385,10 +502,7 @@
       loadingSpinner.classList.remove('hidden');
 
       try {
-        const targetCompressedData = (activeTab === 'question') 
-          ? currentDocData.questionData 
-          : currentDocData.answerData;
-
+        const targetCompressedData = (activeTab === 'question') ? currentDocData.questionData : currentDocData.answerData;
         if (!targetCompressedData) {
           previewContainer.innerHTML = '<p class="text-center text-gray-400 py-10">データがありません。</p>';
           return;
@@ -399,21 +513,19 @@
 
         previewContainer.innerHTML = '';
         await docx.renderAsync(arrayBuffer, previewContainer);
-
       } catch (error) {
-        console.error("レンダリングエラー:", error);
-        alert("ファイルの表示に失敗しました。");
+        console.error("描画エラー:", error);
       } finally {
         loadingSpinner.classList.add('hidden');
       }
     }
 
-    // クリア処理
     function clearDocumentView() {
       selectedDocId = null;
       currentDocData = null;
       document.getElementById('doc-title').innerText = '未選択';
       document.getElementById('tab-answer').classList.add('hidden');
+      document.getElementById('stats-bar').classList.add('hidden');
       activeTab = 'question';
       updateTabUI();
 
@@ -422,31 +534,36 @@
           <svg class="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
           </svg>
-          <p>左側のリストからファイルを選択するか、新しい問題データを追加してください。</p>
+          <p>左側のリストからファイルを選択するか、新しい問題を追加してください。</p>
         </div>
       `;
     }
   </script>
 
   <style>
-    /* 明朝体フォールバック設定およびWord文書用カスタムスタイル */
+    /* レスポンシブ・横スクロール・明朝体フォールバック */
     .docx-viewer {
       background-color: #f8fafc;
-      min-height: 500px;
-      padding: 20px;
+      min-height: 400px;
+      padding: 15px;
       font-family: "Yu Mincho", "游明朝", "Hiragino Mincho ProN", "MS PMincho", serif !important;
+      overflow-x: auto; /* テーブルや画像が大きい場合に横スクロール */
     }
     .docx-viewer .docx-wrapper {
       background: transparent !important;
       padding: 0 !important;
+      display: inline-block;
+      min-width: 100%;
     }
     .docx-viewer section.docx {
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
       margin-bottom: 20px !important;
-      font-family: inherit !important;
+      max-width: 100% !important;
     }
-    .docx-viewer p, .docx-viewer span {
-      font-family: inherit !important;
+    .docx-viewer table {
+      max-width: 100%;
+      overflow-x: auto;
+      display: block;
     }
   </style>
 </head>
@@ -456,64 +573,63 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
       <div class="flex items-center space-x-3">
-        <h1 class="text-xl font-bold text-blue-600 flex items-center gap-2">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <h1 class="text-lg md:text-xl font-bold text-blue-600 flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
           </svg>
-          問題・解答Viewer
+          問題学習Viewer
         </h1>
-        <span id="auth-status" class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">初期化中...</span>
+        <span id="auth-status" class="px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] md:text-xs font-semibold">初期化中...</span>
       </div>
 
-      <div class="flex items-center space-x-4">
-        <!-- ユーザー情報 -->
+      <div class="flex items-center space-x-3">
         <div id="user-info" class="flex items-center space-x-2 hidden">
-          <img id="user-photo" src="" class="w-8 h-8 rounded-full border border-gray-300" alt="Avatar">
-          <span id="user-name" class="text-sm font-medium text-gray-700"></span>
+          <img id="user-photo" src="" class="w-7 h-7 rounded-full border border-gray-300" alt="Avatar">
+          <span id="user-name" class="text-xs md:text-sm font-medium text-gray-700 hidden sm:inline"></span>
         </div>
-
-        <!-- ログイン・ログアウトボタン -->
-        <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm transition shadow-sm flex items-center gap-2">
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C6.721,2,2,6.721,2,12.545s4.721,10.545,10.545,10.545c6.241,0,10.323-4.39,10.323-10.502c0-0.709-0.063-1.352-0.18-1.951H12.545z"/>
-          </svg>
-          Googleでログイン
+        <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition shadow-sm">
+          Googleログイン
         </button>
-        <button id="logout-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-3 py-1.5 rounded-lg text-sm transition hidden">
+        <button id="logout-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-2.5 py-1.5 rounded-lg text-xs transition hidden">
           ログアウト
         </button>
       </div>
     </div>
   </header>
 
-  <!-- メインコンテンツ -->
-  <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-6 opacity-50 pointer-events-none transition-opacity">
+  <!-- メインコンテンツ (レスポンシブグリッド) -->
+  <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto p-3 md:p-4 grid grid-cols-1 lg:grid-cols-4 gap-4 opacity-50 pointer-events-none transition-opacity">
     
-    <!-- サイドバー：登録＆検索・一覧 -->
-    <section class="md:col-span-1 flex flex-col space-y-4">
+    <!-- サイドバー -->
+    <section class="lg:col-span-1 flex flex-col space-y-3">
       
-      <!-- アップロード＆フォームエリア -->
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
-        <h2 class="text-sm font-bold text-gray-700 flex items-center gap-1">
+      <!-- アップロードフォーム -->
+      <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 space-y-2.5">
+        <h2 class="text-xs md:text-sm font-bold text-gray-700 flex items-center gap-1">
           <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
           </svg>
-          新規問題データの追加
+          問題の登録
         </h2>
 
         <div>
-          <label class="block text-[11px] font-semibold text-gray-600 mb-1">問題ファイル (.docx) <span class="text-red-500">*必須</span></label>
-          <input type="file" id="question-file-input" accept=".docx" class="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+          <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">問題の名前 <span class="text-red-500">*必須</span></label>
+          <input type="text" id="problem-name-input" placeholder="例: 第1回 物理基礎 小テスト" class="w-full text-xs border border-slate-300 rounded p-1.5 focus:outline-none focus:border-blue-500"/>
         </div>
 
         <div>
-          <label class="block text-[11px] font-semibold text-gray-600 mb-1">解答解説ファイル (.docx) <span class="text-gray-400 font-normal">任意</span></label>
-          <input type="file" id="answer-file-input" accept=".docx" class="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer"/>
+          <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">問題ファイル (.docx) <span class="text-red-500">*必須</span></label>
+          <input type="file" id="question-file-input" accept=".docx" class="block w-full text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[11px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
         </div>
 
         <div>
-          <label class="block text-[11px] font-semibold text-gray-600 mb-1">ハッシュタグ (スペース区切り)</label>
-          <input type="text" id="tags-input" placeholder="例: 数学I 三角関数 期末テスト" class="w-full text-xs border border-slate-300 rounded p-1.5 focus:outline-none focus:border-blue-500"/>
+          <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">解答解説ファイル (.docx) <span class="text-gray-400 font-normal">任意</span></label>
+          <input type="file" id="answer-file-input" accept=".docx" class="block w-full text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[11px] file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer"/>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold text-gray-600 mb-0.5">ハッシュタグ (スペース区切り)</label>
+          <input type="text" id="tags-input" placeholder="例: 物理 力学 復習" class="w-full text-xs border border-slate-300 rounded p-1.5 focus:outline-none focus:border-blue-500"/>
         </div>
 
         <button id="save-doc-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded text-xs transition shadow-sm">
@@ -521,45 +637,51 @@
         </button>
       </div>
 
-      <!-- 検索＆ファイル一覧 -->
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col space-y-3">
-        <h2 class="text-sm font-bold text-gray-700 flex items-center gap-1">
-          <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-          </svg>
-          問題の検索・一覧
-        </h2>
+      <!-- 切り替えタブ＆検索・一覧 -->
+      <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col space-y-2.5">
+        <div class="flex bg-slate-100 p-1 rounded-lg">
+          <button id="nav-docs" class="flex-1 py-1.5 text-xs font-bold text-blue-600 bg-white rounded shadow-sm">問題一覧</button>
+          <button id="nav-playlists" class="flex-1 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700">プレイリスト</button>
+        </div>
 
-        <!-- 検索バー -->
-        <input type="text" id="search-input" placeholder="タイトルや #タグ で検索..." class="w-full text-xs border border-slate-300 rounded p-1.5 focus:outline-none focus:border-blue-500"/>
+        <div class="flex gap-1">
+          <input type="text" id="search-input" placeholder="タイトルや #タグ で検索..." class="w-full text-xs border border-slate-300 rounded p-1.5 focus:outline-none focus:border-blue-500"/>
+          <button id="create-playlist-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-2 py-1 rounded whitespace-nowrap" title="プレイリスト作成">+</button>
+        </div>
 
-        <!-- 一覧表示コンテナ -->
-        <div id="doc-list" class="space-y-2 flex-1 overflow-y-auto max-h-[400px]">
-          <!-- 一覧がJavaScriptにより追加されます -->
+        <div id="item-list" class="space-y-2 flex-1 overflow-y-auto max-h-[350px] lg:max-h-[450px]">
+          <!-- リストデータ -->
         </div>
       </div>
 
     </section>
 
-    <!-- メインビュー：Word閲覧・タブ切替エリア -->
-    <section class="md:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+    <!-- メインビュー -->
+    <section class="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
       
-      <!-- タイトルバー＆タブ -->
-      <div class="border-b border-slate-200 px-6 pt-3 bg-slate-50/50 flex justify-between items-end">
+      <!-- ヘッダー・タブ・正誤記録バー -->
+      <div class="border-b border-slate-200 px-4 pt-3 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 pb-2">
         <div>
-          <h2 id="doc-title" class="font-bold text-slate-800 text-base mb-2 truncate">未選択</h2>
-          <!-- タブ切替 -->
-          <div class="flex space-x-2 border-b border-transparent">
-            <button id="tab-question" class="px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 text-sm focus:outline-none">
-              問題データ
-            </button>
-            <button id="tab-answer" class="px-4 py-2 font-medium text-gray-500 hover:text-gray-700 text-sm focus:outline-none hidden">
-              解答解説
-            </button>
+          <h2 id="doc-title" class="font-bold text-slate-800 text-base mb-1 truncate max-w-md">未選択</h2>
+          <div class="flex space-x-2">
+            <button id="tab-question" class="px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none">問題</button>
+            <button id="tab-answer" class="px-3 py-1 font-medium text-gray-500 hover:text-gray-700 text-xs focus:outline-none hidden">解答解説</button>
           </div>
         </div>
 
-        <div id="loading-spinner" class="hidden flex items-center gap-2 text-xs text-blue-600 mb-3">
+        <!-- 正解・不正解記録コントロール -->
+        <div id="stats-bar" class="hidden flex items-center gap-3 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs self-stretch sm:self-auto justify-between sm:justify-start">
+          <div class="text-[11px] text-gray-600">
+            正解: <span id="stat-correct-count" class="font-bold text-green-600">0</span> / 
+            不正解: <span id="stat-incorrect-count" class="font-bold text-red-600">0</span>
+          </div>
+          <div class="flex gap-1">
+            <button id="btn-correct" class="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-[11px] font-bold shadow-xs">○ 正解</button>
+            <button id="btn-incorrect" class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-[11px] font-bold shadow-xs">× 不正解</button>
+          </div>
+        </div>
+
+        <div id="loading-spinner" class="hidden flex items-center gap-2 text-xs text-blue-600">
           <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -568,13 +690,13 @@
         </div>
       </div>
 
-      <!-- Word描画ターゲットエリア -->
+      <!-- Word描画エリア（横スクロール対応） -->
       <div id="docx-container" class="docx-viewer flex-1 overflow-y-auto">
         <div class="text-center text-gray-400 py-20">
           <svg class="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
           </svg>
-          <p>左側のリストからファイルを選択するか、新しい問題データを追加してください。</p>
+          <p class="text-xs md:text-sm">左側のリストからファイルを選択するか、新しい問題を追加してください。</p>
         </div>
       </div>
 
