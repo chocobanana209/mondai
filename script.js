@@ -37,7 +37,6 @@ let allDocuments = [];
 let allCollections = [];
 let currentMainView = 'documents'; // 'documents' | 'collections'
 
-// リアルタイムリスナーのアンサブスクライブ関数保管用
 let unsubscribeDocs = null;
 let unsubscribeCollections = null;
 
@@ -45,9 +44,12 @@ try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
-  setPersistence(auth, browserLocalPersistence).catch(console.error);
+  setPersistence(auth, browserLocalPersistence).catch(err => {
+    console.error("セッション永続化エラー:", err);
+  });
 } catch (e) {
-  console.error("Firebase init failed:", e);
+  console.error("Firebase初期化失敗:", e);
+  alert("Firebaseの初期化に失敗しました。設定を確認してください。");
 }
 
 // 認証状態の監視
@@ -56,7 +58,12 @@ onAuthStateChanged(auth, async (user) => {
   updateAuthUI(user);
   
   if (user) {
-    setupRealtimeListeners();
+    try {
+      await user.getIdToken(true);
+      setupRealtimeListeners();
+    } catch (error) {
+      console.error("トークン更新エラー:", error);
+    }
   } else {
     detachRealtimeListeners();
     clearDocumentView();
@@ -93,7 +100,12 @@ function updateAuthUI(user) {
 
 document.getElementById('login-btn').addEventListener('click', async () => {
   const provider = new GoogleAuthProvider();
-  try { await signInWithPopup(auth, provider); } catch (e) { alert(e.message); }
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (e) {
+    console.error("ログインエラー:", e);
+    alert(`ログインに失敗しました: ${e.message}`);
+  }
 });
 
 document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
@@ -103,9 +115,11 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
 
-// 自動同期（リアルタイムリスナー）
+// リアルタイムデータ同期（リスナー設定）
 function setupRealtimeListeners() {
   detachRealtimeListeners();
+
+  if (!currentUser) return;
 
   const qDocs = query(collection(db, "users", currentUser.uid, "documents"), orderBy("updatedAt", "desc"));
   unsubscribeDocs = onSnapshot(qDocs, (snapshot) => {
@@ -119,6 +133,8 @@ function setupRealtimeListeners() {
         updateSidebarStats();
       }
     }
+  }, (error) => {
+    console.error("ドキュメントリスナーエラー (権限や接続を確認してください):", error);
   });
 
   const qColls = query(collection(db, "users", currentUser.uid, "collections"), orderBy("updatedAt", "desc"));
@@ -126,6 +142,8 @@ function setupRealtimeListeners() {
     allCollections = [];
     snapshot.forEach(d => allCollections.push({ id: d.id, ...d.data() }));
     if (currentMainView === 'collections') renderCurrentView();
+  }, (error) => {
+    console.error("問題集リスナーエラー:", error);
   });
 }
 
@@ -134,7 +152,7 @@ function detachRealtimeListeners() {
   if (unsubscribeCollections) unsubscribeCollections();
 }
 
-// ビュー切り替え
+// ビュー切り替え (問題一覧 / 問題集)
 document.getElementById('nav-docs').addEventListener('click', () => {
   currentMainView = 'documents';
   document.getElementById('nav-docs').className = "flex-1 py-1.5 text-xs font-bold text-blue-600 bg-white rounded shadow-sm";
@@ -156,7 +174,7 @@ function renderCurrentView() {
 
 function renderDocumentList(docs) {
   const container = document.getElementById('sidebar-list');
-  container.innerHTML = docs.length === 0 ? '<p class="text-gray-400 text-xs italic">問題がありません。</p>' : '';
+  container.innerHTML = docs.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題が登録されていません。</p>' : '';
 
   docs.forEach(data => {
     const item = document.createElement('div');
@@ -165,14 +183,14 @@ function renderDocumentList(docs) {
     
     item.innerHTML = `
       <div class="flex justify-between items-center mb-1">
-        <span class="truncate text-slate-800">${data.title}</span>
+        <span class="truncate text-slate-800 flex-1 mr-1" title="${data.title}">${data.title}</span>
         <div class="flex gap-1">
           <button class="edit-btn text-blue-500 hover:text-blue-700 px-1">編集</button>
           <button class="del-btn text-red-400 hover:text-red-600 px-1">削除</button>
         </div>
       </div>
       <div class="flex justify-between text-[10px] text-gray-500">
-        <span>○: ${data.stats?.correct || 0} / ×: ${data.stats?.incorrect || 0}</span>
+        <span>正解: ${data.stats?.correct || 0} / 誤答: ${data.stats?.incorrect || 0}</span>
       </div>
     `;
 
@@ -184,8 +202,12 @@ function renderDocumentList(docs) {
     item.querySelector('.del-btn').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (confirm(`「${data.title}」を削除しますか？`)) {
-        await deleteDoc(doc(db, "users", currentUser.uid, "documents", data.id));
-        if (selectedDocId === data.id) clearDocumentView();
+        try {
+          await deleteDoc(doc(db, "users", currentUser.uid, "documents", data.id));
+          if (selectedDocId === data.id) clearDocumentView();
+        } catch (err) {
+          alert("削除に失敗しました: " + err.message);
+        }
       }
     });
 
@@ -200,7 +222,7 @@ function renderDocumentList(docs) {
 
 function renderCollectionList(colls) {
   const container = document.getElementById('sidebar-list');
-  container.innerHTML = colls.length === 0 ? '<p class="text-gray-400 text-xs italic">問題集がありません。</p>' : '';
+  container.innerHTML = colls.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
 
   colls.forEach(c => {
     const item = document.createElement('div');
@@ -215,7 +237,11 @@ function renderCollectionList(colls) {
     item.querySelector('.del-coll').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (confirm(`問題集「${c.name}」を削除しますか？`)) {
-        await deleteDoc(doc(db, "users", currentUser.uid, "collections", c.id));
+        try {
+          await deleteDoc(doc(db, "users", currentUser.uid, "collections", c.id));
+        } catch (err) {
+          alert("削除に失敗しました: " + err.message);
+        }
       }
     });
 
@@ -227,14 +253,18 @@ function renderCollectionList(colls) {
 document.getElementById('create-collection-btn').addEventListener('click', async () => {
   const name = prompt("問題集の名前を入力してください:");
   if (!name || !currentUser) return;
-  const collId = `coll_${Date.now()}`;
-  await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
-    name: name,
-    updatedAt: serverTimestamp()
-  });
+  try {
+    const collId = `coll_${Date.now()}`;
+    await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
+      name: name,
+      updatedAt: serverTimestamp()
+    });
+  } catch (err) {
+    alert("問題集の作成に失敗しました: " + err.message);
+  }
 });
 
-// ファイル変換・保存処理
+// ファイル変換処理
 async function processFiles(fileList) {
   const materials = [];
   for (let file of fileList) {
@@ -274,7 +304,7 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// 登録・編集フォーム処理
+// 登録・編集フォーム制御
 document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm());
 document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
 
@@ -304,43 +334,55 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
+// 保存処理（エラーアラート付き）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
-  if (!currentUser) return;
+  if (!currentUser) {
+    alert("ログインしていません。");
+    return;
+  }
 
   const title = document.getElementById('problem-name-input').value.trim();
-  if (!title) return alert("タイトルを入力してください。");
+  if (!title) {
+    alert("タイトルを入力してください。");
+    return;
+  }
 
   const editingId = document.getElementById('editing-doc-id').value;
   const docId = editingId || `doc_${Date.now()}`;
 
-  const qFiles = document.getElementById('q-file-input').files;
-  const aFiles = document.getElementById('a-file-input').files;
+  try {
+    const qFiles = document.getElementById('q-file-input').files;
+    const aFiles = document.getElementById('a-file-input').files;
 
-  const qMaterials = await processFiles(qFiles);
-  const aMaterials = await processFiles(aFiles);
+    const qMaterials = await processFiles(qFiles);
+    const aMaterials = await processFiles(aFiles);
 
-  const tags = document.getElementById('tags-input').value.split(/[, \s]+/)
-    .map(t => t.replace(/^#/, '').trim()).filter(t => t.length > 0);
+    const tags = document.getElementById('tags-input').value.split(/[, \s]+/)
+      .map(t => t.replace(/^#/, '').trim()).filter(t => t.length > 0);
 
-  const payload = {
-    title: title,
-    tags: tags,
-    questionText: document.getElementById('q-text-input').value,
-    answerText: document.getElementById('a-text-input').value,
-    updatedAt: serverTimestamp()
-  };
+    const payload = {
+      title: title,
+      tags: tags,
+      questionText: document.getElementById('q-text-input').value,
+      answerText: document.getElementById('a-text-input').value,
+      updatedAt: serverTimestamp()
+    };
 
-  // 編集時、新しい添付がない場合は以前のデータを維持
-  if (qMaterials.length > 0 || !editingId) payload.questionMaterials = qMaterials;
-  if (aMaterials.length > 0 || !editingId) payload.answerMaterials = aMaterials;
+    if (qMaterials.length > 0 || !editingId) payload.questionMaterials = qMaterials;
+    if (aMaterials.length > 0 || !editingId) payload.answerMaterials = aMaterials;
 
-  await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
+    await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
 
-  alert("保存しました！");
-  closeRegisterForm();
+    alert("正常に保存されました！");
+    closeRegisterForm();
+
+  } catch (error) {
+    console.error("保存失敗:", error);
+    alert(`保存に失敗しました: ${error.message}`);
+  }
 });
 
-// 問題の選択と表示処理
+// 問題の選択・表示
 function selectDocument(docData) {
   selectedDocId = docData.id;
   currentDocData = docData;
@@ -372,7 +414,7 @@ function updateSidebarStats() {
   document.getElementById('stat-incorrect').innerText = currentDocData.stats?.incorrect || 0;
 }
 
-// サイドバーからの正誤記録
+// 正誤記録
 document.getElementById('btn-record-correct').addEventListener('click', () => recordResult('correct'));
 document.getElementById('btn-record-incorrect').addEventListener('click', () => recordResult('incorrect'));
 
@@ -385,10 +427,14 @@ async function recordResult(type) {
   currentDocData.stats = stats;
   updateSidebarStats();
 
-  await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: stats }, { merge: true });
+  try {
+    await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: stats }, { merge: true });
+  } catch (e) {
+    console.error("正誤の保存に失敗:", e);
+  }
 }
 
-// タブ切り替え
+// タブ切替
 document.getElementById('tab-question').addEventListener('click', () => {
   activeTab = 'question';
   updateTabStyle();
@@ -413,7 +459,7 @@ function updateTabStyle() {
   }
 }
 
-// 素材レンダリング
+// レンダリング処理
 async function renderContent() {
   if (!currentDocData) return;
   const displayArea = document.getElementById('content-display-area');
@@ -422,7 +468,6 @@ async function renderContent() {
   const textVal = activeTab === 'question' ? currentDocData.questionText : currentDocData.answerText;
   const materials = activeTab === 'question' ? currentDocData.questionMaterials : currentDocData.answerMaterials;
 
-  // 1. テキスト表示
   if (textVal) {
     const textDiv = document.createElement('div');
     textDiv.className = "p-3 bg-slate-50 border rounded-lg text-sm whitespace-pre-wrap font-sans";
@@ -430,36 +475,40 @@ async function renderContent() {
     displayArea.appendChild(textDiv);
   }
 
-  // 2. 添付素材表示 (Word, PDF, 画像)
   if (materials && materials.length > 0) {
     for (let item of materials) {
       const container = document.createElement('div');
       container.className = "custom-content-viewer border rounded-lg p-2";
 
-      const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
+      try {
+        const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
 
-      if (item.type === 'docx') {
-        await docx.renderAsync(buffer, container);
-      } else if (item.type === 'image') {
-        const blob = new Blob([buffer]);
-        const url = URL.createObjectURL(blob);
-        const img = document.createElement('img');
-        img.src = url;
-        img.className = "content-image";
-        container.appendChild(img);
-      } else if (item.type === 'pdf') {
-        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: 1.5 });
-          const canvas = document.createElement('canvas');
-          canvas.className = "pdf-page-canvas";
-          const context = canvas.getContext('2d');
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-          await page.render({ canvasContext: context, viewport: viewport }).promise;
-          container.appendChild(canvas);
+        if (item.type === 'docx') {
+          await docx.renderAsync(buffer, container);
+        } else if (item.type === 'image') {
+          const blob = new Blob([buffer]);
+          const url = URL.createObjectURL(blob);
+          const img = document.createElement('img');
+          img.src = url;
+          img.className = "content-image";
+          container.appendChild(img);
+        } else if (item.type === 'pdf') {
+          const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const viewport = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement('canvas');
+            canvas.className = "pdf-page-canvas";
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+            container.appendChild(canvas);
+          }
         }
+      } catch (err) {
+        console.error("ファイル描画エラー:", err);
+        container.innerHTML = `<p class="text-red-500 text-xs">ファイルの表示に失敗しました (${item.fileName})</p>`;
       }
 
       displayArea.appendChild(container);
