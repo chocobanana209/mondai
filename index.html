@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MONDAI</title>
+  <title>問題・解答学習Viewer</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -226,27 +226,22 @@
 
   </div>
 
-  <!-- 正誤記録モーダル -->
+  <!-- 正誤記録モーダル（複数小問対応版） -->
   <div id="stats-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-lg max-w-sm w-full p-5 space-y-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-5 space-y-4 max-h-[90vh] flex flex-col">
       <div class="flex justify-between items-center border-b pb-2">
         <h3 class="font-bold text-slate-800 text-sm">正誤記録・成績管理</h3>
         <button id="close-stats-modal" class="text-gray-400 hover:text-gray-600 text-sm font-bold">✕</button>
       </div>
       <div>
         <div class="text-xs font-semibold text-slate-600 mb-1" id="modal-target-title">問題が選択されていません</div>
-        <div class="flex items-center justify-between text-xs text-gray-700 bg-slate-50 p-3 rounded-lg border">
-          <span>正解数: <strong class="text-green-600 text-sm" id="stat-correct">0</strong> 勝</span>
-          <span>誤答数: <strong class="text-red-600 text-sm" id="stat-incorrect">0</strong> 敗</span>
-        </div>
       </div>
-      <!-- 選択ボタン -->
-      <div class="grid grid-cols-2 gap-2 pt-1">
-        <button id="btn-select-correct" class="border-2 border-green-600 text-green-700 hover:bg-green-50 py-2 rounded text-xs font-bold transition shadow-xs">○ 正解</button>
-        <button id="btn-select-incorrect" class="border-2 border-red-600 text-red-700 hover:bg-red-50 py-2 rounded text-xs font-bold transition shadow-xs">× 誤答</button>
-      </div>
+      
+      <!-- 動的に各小問の判定ボタンと通算成績が生成されるエリア -->
+      <div id="subquestion-stats-container" class="flex-1 overflow-y-auto space-y-3"></div>
+
       <!-- 決定ボタン -->
-      <button id="btn-record-commit" class="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded text-xs font-bold transition shadow-xs hidden">決定する</button>
+      <button id="btn-record-commit" class="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded text-xs font-bold transition shadow-xs">決定する</button>
     </div>
   </div>
 
