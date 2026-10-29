@@ -31,9 +31,14 @@ let app, auth, db;
 let currentUser = null;
 let selectedDocId = null;
 let currentDocData = null;
+let currentCollectionData = null;
 let allDocuments = [];
 let allCollections = [];
 let currentMainView = 'documents'; 
+
+// 問題集プレイ中の状態管理
+let collectionPlayList = [];
+let collectionPlayIndex = 0;
 
 let unsubscribeDocs = null;
 let unsubscribeCollections = null;
@@ -79,6 +84,7 @@ function updateAuthUI(user) {
   const userPhoto = document.getElementById('user-photo');
   const userName = document.getElementById('user-name');
   const mainContent = document.getElementById('main-content');
+  const headerMenuBtn = document.getElementById('header-menu-btn');
 
   if (user) {
     authStatus.innerText = "ログイン中";
@@ -86,6 +92,7 @@ function updateAuthUI(user) {
     loginBtn.classList.add('hidden');
     logoutBtn.classList.remove('hidden');
     userInfo.classList.remove('hidden');
+    headerMenuBtn.classList.remove('hidden');
     userPhoto.src = user.photoURL || 'https://via.placeholder.com/40';
     userName.innerText = user.displayName || user.email;
     mainContent.classList.remove('opacity-50', 'pointer-events-none');
@@ -95,6 +102,7 @@ function updateAuthUI(user) {
     loginBtn.classList.remove('hidden');
     logoutBtn.classList.add('hidden');
     userInfo.classList.add('hidden');
+    headerMenuBtn.classList.add('hidden');
     mainContent.classList.add('opacity-50', 'pointer-events-none');
   }
 }
@@ -116,8 +124,8 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
 
 // 右上の ≡ ボタン (正誤記録メニュー)
 document.getElementById('header-menu-btn').addEventListener('click', () => {
-  if (!currentDocData) {
-    alert("まず左のリストから問題を選択してください。");
+  if (!currentDocData && currentMainView !== 'collections') {
+    alert("まず問題を選択するか、問題集を開いてください。");
     return;
   }
   document.getElementById('stats-modal').classList.remove('hidden');
@@ -152,7 +160,7 @@ function setupRealtimeListeners() {
     allDocuments = [];
     snapshot.forEach(d => allDocuments.push({ id: d.id, ...d.data() }));
     renderCurrentView();
-    updateSubjectAndUnitDatalists(); // 登録用サジェストの更新
+    updateSubjectAndUnitDatalists();
     
     if (selectedDocId) {
       const updated = allDocuments.find(d => d.id === selectedDocId);
@@ -180,7 +188,6 @@ function detachRealtimeListeners() {
   if (unsubscribeCollections) unsubscribeCollections();
 }
 
-// 登録済みの中から教科名・単元名を抽出して使い回せるようにサジェストを更新
 function updateSubjectAndUnitDatalists() {
   const subjects = [...new Set(allDocuments.map(d => d.subject).filter(Boolean))];
   const units = [...new Set(allDocuments.map(d => d.unit).filter(Boolean))];
@@ -188,12 +195,8 @@ function updateSubjectAndUnitDatalists() {
   const subList = document.getElementById('subject-list');
   const unitList = document.getElementById('unit-list');
   
-  if (subList) {
-    subList.innerHTML = subjects.map(s => `<option value="${s}">`).join('');
-  }
-  if (unitList) {
-    unitList.innerHTML = units.map(u => `<option value="${u}">`).join('');
-  }
+  if (subList) subList.innerHTML = subjects.map(s => `<option value="${s}">`).join('');
+  if (unitList) unitList.innerHTML = units.map(u => `<option value="${u}">`).join('');
 }
 
 document.getElementById('nav-docs').addEventListener('click', () => {
@@ -226,7 +229,7 @@ function renderDocumentList(docs) {
     
     const subUnitBadge = (data.subject || data.unit) ? `
       <div class="text-[10px] text-blue-600 font-medium mb-1 truncate">
-        ${data.subject ? `[${data.subject}]` : ''} ${data.unit || ''}
+        ${data.subject ? `[${data.subject}]` : ''} ${data.unit || ''} ${data.subQuestion ? `(${data.subQuestion})` : ''}
       </div>` : '';
 
     item.innerHTML = `
@@ -269,19 +272,41 @@ function renderDocumentList(docs) {
   });
 }
 
+// 問題集リストの描画（既存問題の選択機能付き）
 function renderCollectionList(colls) {
   const container = document.getElementById('sidebar-list');
   container.innerHTML = colls.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
 
   colls.forEach(c => {
     const item = document.createElement('div');
-    item.className = 'p-2.5 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition';
+    item.className = 'p-3 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition space-y-2';
+    
+    const docCount = c.documentIds ? c.documentIds.length : 0;
+
     item.innerHTML = `
       <div class="flex justify-between items-center">
-        <span class="font-bold text-slate-800">${c.name}</span>
-        <button class="del-coll text-red-400 hover:text-red-600 px-1">削除</button>
+        <span class="font-bold text-slate-800 text-sm">${c.name}</span>
+        <div class="flex gap-1">
+          <button class="edit-coll text-blue-500 hover:text-blue-700 px-1">編集</button>
+          <button class="del-coll text-red-400 hover:text-red-600 px-1">削除</button>
+        </div>
+      </div>
+      <div class="text-[10px] text-gray-500">登録問題数: ${docCount} 問</div>
+      <div class="flex gap-1 pt-1">
+        <button class="play-seq flex-1 bg-blue-600 hover:bg-blue-700 text-white py-1 rounded font-bold">順番に出題</button>
+        <button class="play-rnd flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-1 rounded font-bold">ランダム出題</button>
       </div>
     `;
+
+    item.querySelector('.play-seq').addEventListener('click', (e) => {
+      e.stopPropagation();
+      startCollectionPlay(c, 'sequential');
+    });
+
+    item.querySelector('.play-rnd').addEventListener('click', (e) => {
+      e.stopPropagation();
+      startCollectionPlay(c, 'random');
+    });
 
     item.querySelector('.del-coll').addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -294,22 +319,140 @@ function renderCollectionList(colls) {
       }
     });
 
+    item.querySelector('.edit-coll').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCollectionEditor(c);
+    });
+
     container.appendChild(item);
   });
 }
 
-document.getElementById('create-collection-btn').addEventListener('click', async () => {
-  const name = prompt("問題集の名前を入力してください:");
-  if (!name || !currentUser) return;
-  try {
-    const collId = `coll_${Date.now()}`;
-    await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
-      name: name,
-      updatedAt: Date.now()
-    });
-  } catch (err) {
-    alert("問題集の作成に失敗しました: " + err.message);
+// 問題集の作成・編集ダイアログ（既存問題の選択チェックボックス付き）
+async function openCollectionEditor(collData = null) {
+  const collName = collData ? collData.name : prompt("新しい問題集の名前を入力してください:");
+  if (!collName || !currentUser) return;
+
+  const currentIds = collData && collData.documentIds ? collData.documentIds : [];
+  
+  // 簡易的な問題選択モーダル用のHTMLプロンプトまたはダイアログ構築
+  let promptHtml = `問題集「${collName}」に含める問題を選択してください。\n\n`;
+  allDocuments.forEach((doc, idx) => {
+    promptHtml += `[${currentIds.includes(doc.id) ? '✓' : ' '}] ${idx + 1}: ${doc.title} ${doc.subQuestion ? '('+doc.subQuestion+')' : ''}\n`;
+  });
+  
+  const selectedNumsStr = prompt(promptHtml + "\n含める問題の番号をスペース区切りで入力してください (例: 1 2 3)\n※すべて含める場合は「all」と入力", currentIds.length > 0 ? "current" : "all");
+  
+  if (selectedNumsStr === null) return;
+
+  let targetIds = currentIds;
+  if (selectedNumsStr.toLowerCase() === 'all') {
+    targetIds = allDocuments.map(d => d.id);
+  } else if (selectedNumsStr.toLowerCase() !== 'current') {
+    const nums = selectedNumsStr.split(/[\s,]+/).map(n => parseInt(n) - 1).filter(n => !isNaN(n));
+    targetIds = nums.map(idx => allDocuments[idx]?.id).filter(Boolean);
   }
+
+  try {
+    const collId = collData ? collData.id : `coll_${Date.now()}`;
+    await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
+      name: collName,
+      documentIds: targetIds,
+      updatedAt: Date.now()
+    }, { merge: true });
+    alert("問題集を保存しました！");
+  } catch (err) {
+    alert("問題集の保存に失敗しました: " + err.message);
+  }
+}
+
+document.getElementById('create-collection-btn').addEventListener('click', () => openCollectionEditor());
+
+// 問題集プレイ開始
+function startCollectionPlay(collection, mode) {
+  if (!collection.documentIds || collection.documentIds.length === 0) {
+    alert("この問題集には問題が登録されていません。");
+    return;
+  }
+
+  // IDに一致する問題データを抽出
+  let list = collection.documentIds.map(id => allDocuments.find(d => d.id === id)).filter(Boolean);
+  if (list.length === 0) {
+    alert("該当する有効な問題が見つかりませんでした。");
+    return;
+  }
+
+  if (mode === 'random') {
+    // シャッフル
+    list.sort(() => Math.random() - 0.5);
+  }
+
+  collectionPlayList = list;
+  collectionPlayIndex = 0;
+  currentCollectionData = collection;
+
+  document.getElementById('view-mode-container').classList.add('hidden');
+  document.getElementById('register-form-container').classList.add('hidden');
+  document.getElementById('collection-player-container').classList.remove('hidden');
+
+  document.getElementById('collection-player-title').innerText = `${collection.name} (${mode === 'random' ? 'ランダム出題' : '順番に出題'})`;
+  renderCollectionPlayerCurrent();
+}
+
+// 問題集プレイヤーの画面描画
+async function renderCollectionPlayerCurrent() {
+  const container = document.getElementById('collection-player-content');
+  container.innerHTML = '';
+
+  if (collectionPlayIndex >= collectionPlayList.length) {
+    container.innerHTML = `
+      <div class="text-center py-20 space-y-4">
+        <h3 class="text-lg font-bold text-slate-800">🎉 問題集をすべてクリアしました！</h3>
+        <button id="restart-coll-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-bold">最初からやり直す</button>
+      </div>
+    `;
+    document.getElementById('restart-coll-btn').addEventListener('click', () => {
+      collectionPlayIndex = 0;
+      renderCollectionPlayerCurrent();
+    });
+    return;
+  }
+
+  const docData = collectionPlayList[collectionPlayIndex];
+  selectedDocId = docData.id;
+  currentDocData = docData;
+
+  const headerDiv = document.createElement('div');
+  headerDiv.className = "flex justify-between items-center border-b pb-2 text-xs font-bold text-slate-700";
+  headerDiv.innerHTML = `
+    <span>進捗: ${collectionPlayIndex + 1} / ${collectionPlayList.length} 問目</span>
+    <span>${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}</span>
+    <button id="next-coll-item-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">次の問題へ ➡</button>
+  `;
+  container.appendChild(headerDiv);
+
+  // 問題・解答表示エリア
+  const splitDiv = document.createElement('div');
+  splitDiv.className = "grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-y-auto pt-2";
+  splitDiv.innerHTML = `
+    <div id="play-q-area" class="border rounded-lg p-3 bg-white space-y-2 overflow-y-auto max-h-[500px]"></div>
+    <div id="play-a-area" class="border rounded-lg p-3 bg-white space-y-2 overflow-y-auto max-h-[500px]"></div>
+  `;
+  container.appendChild(splitDiv);
+
+  document.getElementById('next-coll-item-btn').addEventListener('click', () => {
+    collectionPlayIndex++;
+    renderCollectionPlayerCurrent();
+  });
+
+  await renderPaneContent('play-q-area', docData.questionText, docData.questionMaterials);
+  await renderPaneContent('play-a-area', docData.answerText, docData.answerMaterials, "解答解説はありません。");
+}
+
+document.getElementById('exit-collection-btn').addEventListener('click', () => {
+  document.getElementById('collection-player-container').classList.add('hidden');
+  document.getElementById('view-mode-container').classList.remove('hidden');
+  clearDocumentView();
 });
 
 // ファイル処理
@@ -329,52 +472,32 @@ async function processFiles(fileList) {
     
     if (isHeic && typeof heic2any !== 'undefined') {
       try {
-        const convertedBlob = await heic2any({
-          blob: file,
-          toType: 'image/jpeg',
-          quality: 0.8
-        });
+        const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
         targetFile = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
         fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
       } catch (e) {
-        console.warn("HEIC変換スキップ:", e);
         throw new Error(`ファイル「${file.name}」のHEIC形式解析に失敗しました。`);
       }
     }
 
     try {
       const buffer = await targetFile.arrayBuffer();
-      if (!buffer || buffer.byteLength === 0) {
-        throw new Error(`ファイル「${fileName}」のデータが空（0バイト）です。`);
-      }
+      if (!buffer || buffer.byteLength === 0) throw new Error(`ファイル「${fileName}」のデータが空です。`);
 
       const base64 = await arrayBufferToBase64(buffer);
-      if (!base64) {
-        throw new Error(`ファイル「${fileName}」のBase64エンコードに失敗しました。`);
-      }
-
       const compressed = LZString.compressToUTF16(base64);
 
-      if (fileName.match(/\.docx$/i)) {
-        type = 'docx';
-      } else if (fileName.match(/\.pdf$/i)) {
-        type = 'pdf';
-      } else if (targetFile.type.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|webp)$/i)) {
+      if (fileName.match(/\.docx$/i)) type = 'docx';
+      else if (fileName.match(/\.pdf$/i)) type = 'pdf';
+      else if (targetFile.type.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|webp)$/i)) {
         type = 'image';
-        if (!fileName.match(/\.jpe?g$/i)) {
-          fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
-        }
+        if (!fileName.match(/\.jpe?g$/i)) fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
       } else {
         throw new Error(`ファイル「${fileName}」はサポートされていない形式です。`);
       }
 
-      materials.push({
-        fileName: String(fileName),
-        type: String(type),
-        data: String(compressed)
-      });
+      materials.push({ fileName: String(fileName), type: String(type), data: String(compressed) });
     } catch (err) {
-      console.error("ファイル処理エラー詳細:", err);
       throw new Error(`[読み込み失敗] ${err.message}`);
     }
   }
@@ -399,17 +522,20 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
+// 登録フォームの開閉とプレビュー機能
 document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm());
 document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
 
 function openRegisterForm(docData = null) {
   document.getElementById('view-mode-container').classList.add('hidden');
+  document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('register-form-container').classList.remove('hidden');
 
   if (docData) {
     document.getElementById('form-header-title').innerText = "問題データの編集";
     document.getElementById('editing-doc-id').value = docData.id;
     document.getElementById('problem-name-input').value = docData.title || '';
+    document.getElementById('subquestion-input').value = docData.subQuestion || '';
     document.getElementById('subject-input').value = docData.subject || '';
     document.getElementById('unit-input').value = docData.unit || '';
     document.getElementById('tags-input').value = (docData.tags || []).join(' ');
@@ -419,18 +545,35 @@ function openRegisterForm(docData = null) {
     document.getElementById('form-header-title').innerText = "新しい問題データの登録";
     document.getElementById('editing-doc-id').value = '';
     document.getElementById('problem-name-input').value = '';
+    document.getElementById('subquestion-input').value = '';
     document.getElementById('subject-input').value = '';
     document.getElementById('unit-input').value = '';
     document.getElementById('tags-input').value = '';
     document.getElementById('q-text-input').value = '';
     document.getElementById('a-text-input').value = '';
   }
+  updateLivePreviews();
 }
 
 function closeRegisterForm() {
   document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
+
+// ライブプレビューの更新
+async function updateLivePreviews() {
+  const qText = document.getElementById('q-text-input').value;
+  const aText = document.getElementById('a-text-input').value;
+  
+  const qPreview = document.getElementById('q-preview-area');
+  const aPreview = document.getElementById('a-preview-area');
+
+  qPreview.innerHTML = qText ? `<div class="content-text-box">${qText}</div>` : '<span class="text-gray-400">テキストなし</span>';
+  aPreview.innerHTML = aText ? `<div class="content-text-box">${aText}</div>` : '<span class="text-gray-400">テキストなし</span>';
+}
+
+document.getElementById('q-text-input').addEventListener('input', updateLivePreviews);
+document.getElementById('a-text-input').addEventListener('input', updateLivePreviews);
 
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
@@ -439,6 +582,7 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   }
 
   const title = document.getElementById('problem-name-input').value.trim();
+  const subQuestion = document.getElementById('subquestion-input').value.trim();
   const subject = document.getElementById('subject-input').value.trim();
   const unit = document.getElementById('unit-input').value.trim();
   const qText = document.getElementById('q-text-input').value.trim();
@@ -465,6 +609,7 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
 
     const rawPayload = {
       title: String(title || "無題の問題"),
+      subQuestion: String(subQuestion || ""),
       subject: String(subject || ""),
       unit: String(unit || ""),
       tags: tags,
@@ -476,12 +621,10 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
     };
 
     const cleanPayload = JSON.parse(JSON.stringify(rawPayload));
-
     await setDoc(doc(db, "users", currentUser.uid, "documents", docId), cleanPayload, { merge: true });
 
     alert("正常に保存されました！");
     closeRegisterForm();
-
   } catch (error) {
     console.error("保存失敗:", error);
     alert(`保存に失敗しました: ${error.message}`);
@@ -492,7 +635,7 @@ function selectDocument(docData) {
   selectedDocId = docData.id;
   currentDocData = docData;
 
-  document.getElementById('doc-title').innerText = docData.title;
+  document.getElementById('doc-title').innerText = `${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}`;
   document.getElementById('edit-current-btn').classList.remove('hidden');
 
   const hasAnswer = docData.answerText || (docData.answerMaterials && docData.answerMaterials.length > 0);
@@ -517,7 +660,7 @@ document.getElementById('edit-current-btn').addEventListener('click', () => {
 
 function updateModalStats() {
   if (!currentDocData) return;
-  document.getElementById('modal-target-title').innerText = currentDocData.title;
+  document.getElementById('modal-target-title').innerText = `${currentDocData.title} ${currentDocData.subQuestion ? '('+currentDocData.subQuestion+')' : ''}`;
   document.getElementById('stat-correct').innerText = currentDocData.stats?.correct || 0;
   document.getElementById('stat-incorrect').innerText = currentDocData.stats?.incorrect || 0;
 }
@@ -525,17 +668,30 @@ function updateModalStats() {
 document.getElementById('btn-record-correct').addEventListener('click', () => recordResult('correct'));
 document.getElementById('btn-record-incorrect').addEventListener('click', () => recordResult('incorrect'));
 
+// 正誤記録（誤答履歴にタイムスタンプを含める仕様）
 async function recordResult(type) {
   if (!currentDocData || !currentUser) return;
   const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
-  if (type === 'correct') stats.correct++;
-  else stats.incorrect++;
+  const history = currentDocData.history || [];
+
+  const timestamp = new Date().toISOString(); // 時刻を含める
+
+  if (type === 'correct') {
+    stats.correct++;
+  } else {
+    stats.incorrect++;
+    history.push({ type: 'incorrect', timestamp: timestamp });
+  }
 
   currentDocData.stats = stats;
+  currentDocData.history = history;
   updateModalStats();
 
   try {
-    await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: stats }, { merge: true });
+    await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { 
+      stats: stats, 
+      history: history 
+    }, { merge: true });
   } catch (e) {
     console.error("正誤の保存に失敗:", e);
   }
@@ -544,7 +700,6 @@ async function recordResult(type) {
 // レンダリング処理
 async function renderContent() {
   if (!currentDocData) return;
-  
   await renderPaneContent('question-display-area', currentDocData.questionText, currentDocData.questionMaterials);
   await renderPaneContent('answer-display-area', currentDocData.answerText, currentDocData.answerMaterials, "解答解説は登録されていません。");
 }
@@ -560,7 +715,7 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
 
   if (textVal) {
     const textDiv = document.createElement('div');
-    textDiv.className = "p-3 bg-slate-50 border rounded-lg text-sm whitespace-pre-wrap font-sans";
+    textDiv.className = "content-text-box"; // 白背景・明朝体スタイル適用
     textDiv.innerText = textVal;
     displayArea.appendChild(textDiv);
   }
