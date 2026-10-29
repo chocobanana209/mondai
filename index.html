@@ -268,9 +268,9 @@
     </div>
   </div>
 
-  <!-- 問題集編集モーダル (問題並び替え対応) -->
+  <!-- 問題集編集モーダル (ビジュアルカード・ドラッグ＆ドロップ並び替え対応) -->
   <div id="collection-edit-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
+    <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
       <div class="flex justify-between items-center border-b pb-2">
         <h3 class="font-bold text-slate-800 text-sm" id="coll-modal-title">問題集の編集</h3>
         <button id="close-coll-modal" class="text-gray-400 hover:text-gray-600 text-sm font-bold">✕</button>
@@ -282,10 +282,9 @@
       </div>
       <div class="flex-1 overflow-y-auto space-y-1 border rounded p-2 bg-slate-50">
         <div class="flex justify-between items-center mb-1">
-          <label class="block text-[11px] font-bold text-gray-600">選択と出題順の設定</label>
-          <span class="text-[10px] text-gray-400">「▲」「▼」で順序入れ替え</span>
+          <label class="block text-[11px] font-bold text-gray-600">出題順の設定 (ドラッグまたは「▲」「▼」で移動)</label>
         </div>
-        <div id="coll-problems-checkbox-list" class="space-y-1"></div>
+        <div id="coll-problems-checkbox-list" class="space-y-2"></div>
       </div>
       <button id="save-coll-modal-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-xs font-bold transition">問題集を保存する</button>
     </div>
