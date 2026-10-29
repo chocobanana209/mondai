@@ -5,7 +5,7 @@
   border-right: none;
 }
 
-/* テキストおよびWordプレビュー用の共通スタイル（白背景・明朝体・折り返し） */
+/* テキストおよびWordプレビュー用の共通スタイル */
 .content-text-box {
   font-family: "Times New Roman", "MS Mincho", "Hiragino Mincho ProN", serif;
   word-break: break-all;
@@ -77,4 +77,44 @@
   margin: 0 auto 10px auto;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   border-radius: 4px;
+}
+
+/* 問題集並び替えカードのスタイル */
+.coll-sort-item {
+  transition: all 0.2s ease;
+}
+
+.coll-sort-item.dragging {
+  opacity: 0.4;
+  border-style: dashed;
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.card-thumb-preview {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  flex-shrink: 0;
+}
+
+.card-text-fallback {
+  width: 50px;
+  height: 50px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background-color: #f1f5f9;
+  color: #64748b;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2px;
+  flex-shrink: 0;
+  line-height: 1.1;
+  overflow: hidden;
 }
