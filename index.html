@@ -12,13 +12,16 @@
   <script src="https://unpkg.com/jszip/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.1.15/dist/docx-preview.min.js"></script>
   
-  <!-- PDF.js Library (PDF表示用) -->
+  <!-- PDF.js Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
 
-  <!-- LZ-String Library (圧縮用) -->
+  <!-- HEIC-to-JPEG Library (iPhone等のHEIC画像変換用) -->
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+  <!-- LZ-String Library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 
   <!-- Custom Styles -->
@@ -30,7 +33,6 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-20">
     <div class="max-w-full mx-auto px-4 py-2.5 flex justify-between items-center">
       <div class="flex items-center space-x-3">
-        <!-- サイドバー開閉ボタン -->
         <button id="toggle-sidebar-btn" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 focus:outline-none">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
@@ -62,10 +64,8 @@
 
   <div class="flex-1 flex relative overflow-hidden">
 
-    <!-- 折りたたみ式サイドバー -->
+    <!-- サイドバー -->
     <aside id="sidebar" class="w-80 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 z-10 absolute md:relative h-full">
-      
-      <!-- ナビゲーション切り替えボタン群 -->
       <div class="p-3 border-b border-slate-200 space-y-2">
         <button id="btn-nav-register" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg text-xs transition flex items-center justify-center gap-1 shadow-sm">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -85,12 +85,8 @@
         </div>
       </div>
 
-      <!-- リストエリア -->
-      <div id="sidebar-list" class="flex-1 overflow-y-auto p-3 space-y-2">
-        <!-- JSで一覧が追加されます -->
-      </div>
+      <div id="sidebar-list" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
 
-      <!-- 選択中問題の正誤記録エリア (サイドバー下部) -->
       <div id="sidebar-stats-card" class="hidden p-3 bg-slate-50 border-t border-slate-200 space-y-2">
         <div class="text-xs font-bold text-slate-700 truncate" id="sidebar-target-title">未選択</div>
         <div class="flex items-center justify-between text-xs text-gray-600">
@@ -101,13 +97,12 @@
           <button id="btn-record-incorrect" class="bg-red-600 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold transition shadow-xs">× 誤答</button>
         </div>
       </div>
-
     </aside>
 
     <!-- メイン表示領域 -->
     <main id="main-content" class="flex-1 bg-slate-50 flex flex-col overflow-y-auto p-4 opacity-50 pointer-events-none transition-opacity">
       
-      <!-- 1. 閲覧ビュー -->
+      <!-- 閲覧ビュー -->
       <div id="view-mode-container" class="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="border-b border-slate-200 px-4 py-3 bg-slate-50 flex justify-between items-center">
           <div class="flex items-center gap-3">
@@ -121,15 +116,12 @@
           </div>
         </div>
 
-        <!-- 素材レンダリングエリア -->
         <div id="content-display-area" class="flex-1 p-4 overflow-y-auto space-y-4">
-          <div class="text-center text-gray-400 py-20">
-            <p>問題データが選択されていません。</p>
-          </div>
+          <div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>
         </div>
       </div>
 
-      <!-- 2. 問題の登録・編集フォーム (モーダル風/画面切替) -->
+      <!-- 登録・編集フォーム -->
       <div id="register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-3xl mx-auto w-full my-auto">
         <div class="flex justify-between items-center border-b pb-3">
           <h2 id="form-header-title" class="text-base font-bold text-slate-800">新しい問題データの登録</h2>
@@ -148,33 +140,27 @@
           <input type="text" id="tags-input" placeholder="例: 数学 図形 復習" class="w-full text-xs border border-slate-300 rounded p-2 focus:outline-none focus:border-blue-500"/>
         </div>
 
-        <!-- 問題データ（複数要素の組み合わせ） -->
         <div class="border p-3 rounded-lg bg-slate-50 space-y-3">
           <h3 class="text-xs font-bold text-slate-700">【問題データ】追加素材</h3>
-          
           <div>
             <label class="block text-[11px] text-gray-600 mb-1">テキスト文面</label>
             <textarea id="q-text-input" rows="3" placeholder="問題文を入力..." class="w-full text-xs border border-slate-300 rounded p-2 focus:outline-none focus:border-blue-500"></textarea>
           </div>
-
           <div>
-            <label class="block text-[11px] text-gray-600 mb-1">添付ファイル (Word / PDF / 画像)</label>
-            <input type="file" id="q-file-input" accept=".docx,.pdf,image/*" multiple class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+            <label class="block text-[11px] text-gray-600 mb-1">添付ファイル (Word / PDF / 画像 ※HEICも自動変換)</label>
+            <input type="file" id="q-file-input" accept=".docx,.pdf,image/*,.heic,.HEIC" multiple class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
           </div>
         </div>
 
-        <!-- 解答データ（複数要素の組み合わせ） -->
         <div class="border p-3 rounded-lg bg-slate-50 space-y-3">
           <h3 class="text-xs font-bold text-slate-700">【解答解説データ】追加素材 (任意)</h3>
-          
           <div>
             <label class="block text-[11px] text-gray-600 mb-1">解答テキスト文面</label>
             <textarea id="a-text-input" rows="3" placeholder="解答や解説を入力..." class="w-full text-xs border border-slate-300 rounded p-2 focus:outline-none focus:border-blue-500"></textarea>
           </div>
-
           <div>
             <label class="block text-[11px] text-gray-600 mb-1">添付ファイル (Word / PDF / 画像)</label>
-            <input type="file" id="a-file-input" accept=".docx,.pdf,image/*" multiple class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer"/>
+            <input type="file" id="a-file-input" accept=".docx,.pdf,image/*,.heic,.HEIC" multiple class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer"/>
           </div>
         </div>
 
@@ -187,7 +173,6 @@
 
   </div>
 
-  <!-- Firebase & Main Application Script -->
   <script type="module" src="script.js"></script>
 </body>
 </html>
