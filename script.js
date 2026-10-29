@@ -347,7 +347,7 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理（ファイルが空の場合や添付ファイルのみでも安全な形式）
+// 保存処理（JSONサニタイズによる完全対策版）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -377,27 +377,20 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       .map(t => t.replace(/^#/, '').trim())
       .filter(t => t.length > 0);
 
-    const payload = {
+    const rawPayload = {
       title: String(title || "無題の問題"),
       tags: tags,
       questionText: String(qText),
       answerText: String(aText),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      questionMaterials: qMaterials || [],
+      answerMaterials: aMaterials || []
     };
 
-    if (qMaterials && qMaterials.length > 0) {
-      payload.questionMaterials = qMaterials;
-    } else {
-      payload.questionMaterials = [];
-    }
+    // 隠れたundefinedや不正なネストを完全に排除するクリーンアップ
+    const cleanPayload = JSON.parse(JSON.stringify(rawPayload));
 
-    if (aMaterials && aMaterials.length > 0) {
-      payload.answerMaterials = aMaterials;
-    } else {
-      payload.answerMaterials = [];
-    }
-
-    await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
+    await setDoc(doc(db, "users", currentUser.uid, "documents", docId), cleanPayload, { merge: true });
 
     alert("正常に保存されました！");
     closeRegisterForm();
