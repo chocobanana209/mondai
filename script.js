@@ -16,7 +16,6 @@ import {
   query, 
   orderBy, 
   onSnapshot,
-  serverTimestamp,
   deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
@@ -31,11 +30,11 @@ const firebaseConfig = {
 let app, auth, db;
 let currentUser = null;
 let selectedDocId = null;
-let activeTab = 'question'; // 'question' | 'answer'
+let activeTab = 'question'; 
 let currentDocData = null;
 let allDocuments = [];
 let allCollections = [];
-let currentMainView = 'documents'; // 'documents' | 'collections'
+let currentMainView = 'documents'; 
 
 let unsubscribeDocs = null;
 let unsubscribeCollections = null;
@@ -108,7 +107,6 @@ document.getElementById('login-btn').addEventListener('click', async () => {
 
 document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
 
-// サイドバー折りたたみ
 document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
@@ -123,6 +121,8 @@ function setupRealtimeListeners() {
     allDocuments = [];
     snapshot.forEach(d => allDocuments.push({ id: d.id, ...d.data() }));
     renderCurrentView();
+    
+    // 選択中のドキュメントデータが更新された場合にビューを保持
     if (selectedDocId) {
       const updated = allDocuments.find(d => d.id === selectedDocId);
       if (updated) {
@@ -149,7 +149,6 @@ function detachRealtimeListeners() {
   if (unsubscribeCollections) unsubscribeCollections();
 }
 
-// ビュー切り替え
 document.getElementById('nav-docs').addEventListener('click', () => {
   currentMainView = 'documents';
   document.getElementById('nav-docs').className = "flex-1 py-1.5 text-xs font-bold text-blue-600 bg-white rounded shadow-sm";
@@ -246,7 +245,6 @@ function renderCollectionList(colls) {
   });
 }
 
-// 新規問題集作成
 document.getElementById('create-collection-btn').addEventListener('click', async () => {
   const name = prompt("問題集の名前を入力してください:");
   if (!name || !currentUser) return;
@@ -254,14 +252,13 @@ document.getElementById('create-collection-btn').addEventListener('click', async
     const collId = `coll_${Date.now()}`;
     await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
       name: name,
-      updatedAt: serverTimestamp()
+      updatedAt: Date.now()
     });
   } catch (err) {
     alert("問題集の作成に失敗しました: " + err.message);
   }
 });
 
-// ファイル変換処理（安全対策版）
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
@@ -304,7 +301,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// 登録・編集フォーム制御
 document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm());
 document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
 
@@ -334,7 +330,7 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理
+// 保存処理（安定化版）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -365,10 +361,9 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       tags: tags,
       questionText: document.getElementById('q-text-input').value,
       answerText: document.getElementById('a-text-input').value,
-      updatedAt: serverTimestamp()
+      updatedAt: Date.now() // サーバー時刻のズレによる再描画バグを防止
     };
 
-    // ファイルが選択されている場合のみ配列をセット（空の不正な配列を登録しない）
     if (qMaterials.length > 0) {
       payload.questionMaterials = qMaterials;
     } else if (!editingId) {
@@ -392,7 +387,6 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   }
 });
 
-// 問題の選択・表示
 function selectDocument(docData) {
   selectedDocId = docData.id;
   currentDocData = docData;
@@ -424,7 +418,6 @@ function updateSidebarStats() {
   document.getElementById('stat-incorrect').innerText = currentDocData.stats?.incorrect || 0;
 }
 
-// 正誤記録
 document.getElementById('btn-record-correct').addEventListener('click', () => recordResult('correct'));
 document.getElementById('btn-record-incorrect').addEventListener('click', () => recordResult('incorrect'));
 
@@ -444,7 +437,6 @@ async function recordResult(type) {
   }
 }
 
-// タブ切替
 document.getElementById('tab-question').addEventListener('click', () => {
   activeTab = 'question';
   updateTabStyle();
@@ -469,7 +461,6 @@ function updateTabStyle() {
   }
 }
 
-// レンダリング処理
 async function renderContent() {
   if (!currentDocData) return;
   const displayArea = document.getElementById('content-display-area');
