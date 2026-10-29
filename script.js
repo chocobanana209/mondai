@@ -44,6 +44,10 @@ let unsubscribeCollections = null;
 
 let pendingSubResults = {};
 
+// 登録・編集フォーム内で保持するアタッチメント配列（個別追加・削除対応）
+let currentFormQMaterials = [];
+let currentFormAMaterials = [];
+
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
@@ -287,38 +291,27 @@ function renderDocumentList(docs) {
   });
 }
 
-// 誤答整理ロジックに基づく問題リスト生成ヘルパー
 function getMistakeReviewList() {
-  // 1. 各問題の「最後の履歴」または「過去の誤答有無」を分析
-  let incorrectLast = []; // 最終解答が誤答のもの
-  let onceIncorrectNowCorrect = []; // 最終解答は正答だが過去に間違えたもの
+  let incorrectLast = [];
+  let onceIncorrectNowCorrect = [];
 
   allDocuments.forEach(doc => {
     const history = doc.history || [];
     if (history.length === 0) return;
 
-    // 最新の履歴を取得
     const lastEntry = history[history.length - 1];
     const hasIncorrect = history.some(h => h.type === 'incorrect');
 
     if (lastEntry.type === 'incorrect') {
-      // 最終解答が誤答
-      // 最後の誤答の日時(timestamp)を取得 (古い順に並べるための値)
       const lastIncorrectTime = new Date(lastEntry.timestamp || 0).getTime();
       incorrectLast.push({ doc, time: lastIncorrectTime });
     } else if (lastEntry.type === 'correct' && hasIncorrect) {
-      // 最終解答は正答だが過去に間違いがある
-      // 最後の正解の日時 (新しい順に並べるための値)
       const lastCorrectTime = new Date(lastEntry.timestamp || 0).getTime();
       onceIncorrectNowCorrect.push({ doc, time: lastCorrectTime });
     }
   });
 
-  // ルール適用
-  // ① 最終解答が誤答のものを古い順 (昇順)
   incorrectLast.sort((a, b) => a.time - b.time);
-
-  // ② 最終解答は正答でも過去間違えた問題を最終解答が新しい順 (降順)
   onceIncorrectNowCorrect.sort((a, b) => b.time - a.time);
 
   return [...incorrectLast.map(item => item.doc), ...onceIncorrectNowCorrect.map(item => item.doc)];
@@ -328,7 +321,6 @@ function renderCollectionList(colls) {
   const container = document.getElementById('sidebar-list');
   container.innerHTML = '';
 
-  // 1. 【誤答整理】を常に一番上に固定表示
   const mistakeList = getMistakeReviewList();
   const mistakeCard = document.createElement('div');
   mistakeCard.className = 'p-3 rounded-lg border bg-amber-50 hover:bg-amber-100 border-amber-300 cursor-pointer text-xs transition space-y-2 shadow-xs';
@@ -358,7 +350,6 @@ function renderCollectionList(colls) {
 
   container.appendChild(mistakeCard);
 
-  // 2. 通常の問題集リスト
   colls.forEach(c => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition space-y-2';
@@ -544,7 +535,6 @@ async function renderCollectionPlayerCurrent() {
 
   document.getElementById('coll-progress-badge').innerText = `${collectionPlayIndex + 1} / ${collectionPlayList.length}`;
 
-  // 解答解説の有無チェック
   const hasAnswer = docData.answerText || (docData.answerMaterials && docData.answerMaterials.length > 0);
   if (hasAnswer) {
     toggleCollAnswerBtn.classList.remove('hidden');
@@ -636,9 +626,10 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm());
+document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm(null));
 document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
 
+// 💡 修正: 新規登録時は必ず空のIDを発番し、既存データの混同（迷子）を防止
 function openRegisterForm(docData = null) {
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.add('hidden');
@@ -654,9 +645,12 @@ function openRegisterForm(docData = null) {
     document.getElementById('tags-input').value = (docData.tags || []).join(' ');
     document.getElementById('q-text-input').value = docData.questionText || '';
     document.getElementById('a-text-input').value = docData.answerText || '';
+    
+    currentFormQMaterials = docData.questionMaterials ? [...docData.questionMaterials] : [];
+    currentFormAMaterials = docData.answerMaterials ? [...docData.answerMaterials] : [];
   } else {
     document.getElementById('form-header-title').innerText = "新しい問題データの登録";
-    document.getElementById('editing-doc-id').value = '';
+    document.getElementById('editing-doc-id').value = ''; // 空にして新規ID発番を強制
     document.getElementById('problem-name-input').value = '';
     document.getElementById('subquestion-input').value = '';
     document.getElementById('subject-input').value = '';
@@ -664,7 +658,15 @@ function openRegisterForm(docData = null) {
     document.getElementById('tags-input').value = '';
     document.getElementById('q-text-input').value = '';
     document.getElementById('a-text-input').value = '';
+    
+    currentFormQMaterials = [];
+    currentFormAMaterials = [];
   }
+  
+  // ファイル選択inputをクリア
+  document.getElementById('q-file-input').value = '';
+  document.getElementById('a-file-input').value = '';
+
   updateLivePreviews();
 }
 
@@ -673,26 +675,52 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-async function updateLivePreviews() {
-  const qText = document.getElementById('q-text-input').value;
-  const aText = document.getElementById('a-text-input').value;
-  const qFiles = document.getElementById('q-file-input').files;
-  const aFiles = document.getElementById('a-file-input').files;
+// ファイル追加イベント
+document.getElementById('q-file-input').addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (files && files.length > 0) {
+    try {
+      const newMats = await processFiles(files);
+      currentFormQMaterials.push(...newMats);
+      document.getElementById('q-file-input').value = ''; // リセット
+      await updateLivePreviews();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+});
 
-  await renderPreviewPane('q-preview-area', qText, qFiles);
-  await renderPreviewPane('a-preview-area', aText, aFiles);
-}
+document.getElementById('a-file-input').addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (files && files.length > 0) {
+    try {
+      const newMats = await processFiles(files);
+      currentFormAMaterials.push(...newMats);
+      document.getElementById('a-file-input').value = ''; // リセット
+      await updateLivePreviews();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+});
 
 document.getElementById('q-text-input').addEventListener('input', updateLivePreviews);
 document.getElementById('a-text-input').addEventListener('input', updateLivePreviews);
-document.getElementById('q-file-input').addEventListener('change', updateLivePreviews);
-document.getElementById('a-file-input').addEventListener('change', updateLivePreviews);
 
-async function renderPreviewPane(previewId, textVal, files) {
+async function updateLivePreviews() {
+  const qText = document.getElementById('q-text-input').value;
+  const aText = document.getElementById('a-text-input').value;
+
+  await renderPreviewPane('q-preview-area', qText, currentFormQMaterials, 'q');
+  await renderPreviewPane('a-preview-area', aText, currentFormAMaterials, 'a');
+}
+
+// ファイル単体の個別削除機能付きプレビューレンダラー
+async function renderPreviewPane(previewId, textVal, materials, typePrefix) {
   const area = document.getElementById(previewId);
   area.innerHTML = '';
 
-  if (!textVal && (!files || files.length === 0)) {
+  if (!textVal && (!materials || materials.length === 0)) {
     area.innerHTML = '<span class="text-gray-400">プレビューなし</span>';
     return;
   }
@@ -704,12 +732,34 @@ async function renderPreviewPane(previewId, textVal, files) {
     area.appendChild(div);
   }
 
-  if (files && files.length > 0) {
-    try {
-      const tempMaterials = await processFiles(files);
-      for (let item of tempMaterials) {
-        const container = document.createElement('div');
-        container.className = "custom-content-viewer border rounded p-1 bg-white mb-2";
+  if (materials && materials.length > 0) {
+    for (let idx = 0; idx < materials.length; idx++) {
+      const item = materials[idx];
+      const wrapper = document.createElement('div');
+      wrapper.className = "relative border rounded p-1 bg-white mb-2 group";
+
+      // 個別削除ボタン
+      const delBtn = document.createElement('button');
+      delBtn.type = "button";
+      delBtn.className = "absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow z-10";
+      delBtn.innerText = "✕";
+      delBtn.title = `「${item.fileName}」を削除`;
+      delBtn.addEventListener('click', async () => {
+        if (confirm(`ファイル「${item.fileName}」を削除しますか？`)) {
+          if (typePrefix === 'q') {
+            currentFormQMaterials.splice(idx, 1);
+          } else {
+            currentFormAMaterials.splice(idx, 1);
+          }
+          await updateLivePreviews();
+        }
+      });
+      wrapper.appendChild(delBtn);
+
+      const container = document.createElement('div');
+      container.className = "custom-content-viewer pr-6";
+
+      try {
         const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
 
         if (item.type === 'docx') {
@@ -742,10 +792,12 @@ async function renderPreviewPane(previewId, textVal, files) {
             container.appendChild(canvas);
           }
         }
-        area.appendChild(container);
+      } catch (e) {
+        container.innerHTML = `<p class="text-red-500 text-[10px]">プレビュー生成エラー: ${e.message}</p>`;
       }
-    } catch (e) {
-      area.innerHTML += `<p class="text-red-500 text-[10px]">プレビュー生成エラー: ${e.message}</p>`;
+
+      wrapper.appendChild(container);
+      area.appendChild(wrapper);
     }
   }
 }
@@ -779,25 +831,23 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   const unit = document.getElementById('unit-input').value.trim();
   const qText = document.getElementById('q-text-input').value.trim();
   const aText = document.getElementById('a-text-input').value.trim();
-  
-  const qFiles = document.getElementById('q-file-input').files;
-  const aFiles = document.getElementById('a-file-input').files;
 
-  if (!title && !qText && (!qFiles || qFiles.length === 0)) {
+  if (!title && !qText && currentFormQMaterials.length === 0) {
     alert("タイトル、または問題文・添付ファイルのいずれかを入力・選択してください。");
     return;
   }
 
+  // 💡 修正: 隠しフィールドのIDが空の時は必ず新規のタイムスタンプIDを発番して上書き事故を防止
   const editingId = document.getElementById('editing-doc-id').value;
-  const docId = editingId || `doc_${Date.now()}`;
+  const docId = editingId ? editingId : `doc_${Date.now()}`;
 
   try {
-    const qMaterials = await processFiles(qFiles);
-    const aMaterials = await processFiles(aFiles);
-
     const tags = document.getElementById('tags-input').value.split(/[, \s]+/)
       .map(t => t.replace(/^#/, '').trim())
       .filter(t => t.length > 0);
+
+    // 既存データの成績・履歴を維持しつつペイロード作成
+    const existingDoc = allDocuments.find(d => d.id === docId);
 
     const rawPayload = {
       title: String(title || "無題の問題"),
@@ -808,8 +858,11 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       questionText: String(qText),
       answerText: String(aText),
       updatedAt: Date.now(),
-      questionMaterials: qMaterials || [],
-      answerMaterials: aMaterials || []
+      questionMaterials: currentFormQMaterials || [],
+      answerMaterials: currentFormAMaterials || [],
+      stats: existingDoc ? (existingDoc.stats || { correct: 0, incorrect: 0 }) : { correct: 0, incorrect: 0 },
+      subStats: existingDoc ? (existingDoc.subStats || {}) : {},
+      history: existingDoc ? (existingDoc.history || []) : []
     };
 
     const cleanPayload = JSON.parse(JSON.stringify(rawPayload));
@@ -916,7 +969,7 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
   const subStatsMap = currentDocData.subStats || {};
   const history = currentDocData.history || [];
-  const timestamp = new Date().toISOString(); // 正確な時系列比較用
+  const timestamp = new Date().toISOString();
 
   let updated = false;
 
