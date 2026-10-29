@@ -44,7 +44,7 @@ try {
   db = getFirestore(app);
 
   enableIndexedDbPersistence(db).catch((err) => {
-    console.warn("オフラインキャッシュの競合（他タブが開いている可能性）:", err.code);
+    console.warn("オフラインキャッシュの競合:", err.code);
   });
 
   setPersistence(auth, browserLocalPersistence).catch(err => {
@@ -54,7 +54,6 @@ try {
   console.error("Firebase初期化失敗:", e);
 }
 
-// 安定した認証状態の監視と初期化トリガー
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   updateAuthUI(user);
@@ -127,6 +126,21 @@ document.getElementById('header-menu-btn').addEventListener('click', () => {
 
 document.getElementById('close-stats-modal').addEventListener('click', () => {
   document.getElementById('stats-modal').classList.add('hidden');
+});
+
+// 解答解説ペインのトグル（ボタンで表示／非表示）
+const answerPane = document.getElementById('answer-pane');
+const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
+const closeAnswerBtn = document.getElementById('close-answer-pane-btn');
+
+toggleAnswerBtn.addEventListener('click', () => {
+  answerPane.classList.toggle('hidden');
+  toggleAnswerBtn.innerText = answerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
+});
+
+closeAnswerBtn.addEventListener('click', () => {
+  answerPane.classList.add('hidden');
+  toggleAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
 function setupRealtimeListeners() {
@@ -275,7 +289,7 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
-// ファイル処理・詳細エラーハンドリング
+// ファイル処理
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
@@ -328,7 +342,7 @@ async function processFiles(fileList) {
           fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
         }
       } else {
-        throw new Error(`ファイル「${fileName}」はサポートされていない形式です。(.docx, .pdf, 画像に対応)`);
+        throw new Error(`ファイル「${fileName}」はサポートされていない形式です。`);
       }
 
       materials.push({
@@ -450,6 +464,19 @@ function selectDocument(docData) {
   document.getElementById('doc-title').innerText = docData.title;
   document.getElementById('edit-current-btn').classList.remove('hidden');
 
+  // 解答解説が存在する場合はボタンを表示、なければ非表示
+  const hasAnswer = docData.answerText || (docData.answerMaterials && docData.answerMaterials.length > 0);
+  if (hasAnswer) {
+    toggleAnswerBtn.classList.remove('hidden');
+  } else {
+    toggleAnswerBtn.classList.add('hidden');
+    answerPane.classList.add('hidden');
+  }
+
+  // 初期状態では解答ペインは閉じておく（ハイブリッド）
+  answerPane.classList.add('hidden');
+  toggleAnswerBtn.innerText = "💡 解答解説を表示";
+
   updateModalStats();
   renderContent();
   renderCurrentView();
@@ -485,14 +512,11 @@ async function recordResult(type) {
   }
 }
 
-// 左右二分割ペインへのレンダリング処理
+// レンダリング処理
 async function renderContent() {
   if (!currentDocData) return;
   
-  // 問題ペインの描画
   await renderPaneContent('question-display-area', currentDocData.questionText, currentDocData.questionMaterials);
-  
-  // 解答解説ペインの描画
   await renderPaneContent('answer-display-area', currentDocData.answerText, currentDocData.answerMaterials, "解答解説は登録されていません。");
 }
 
@@ -521,12 +545,13 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
         const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
 
         if (item.type === 'docx') {
-          // docx-preview による段落や番号付きリストのレンダリング
+          // docx-preview（フォント・段落番号の最適化オプション）
           await docx.renderAsync(buffer, container, null, {
             inWrapper: true,
-            ignoreWidth: false,
-            ignoreHeight: false,
-            renderChanges: false
+            ignoreWidth: true,   // 用紙の固定幅を無視して画面幅に合わせる
+            ignoreHeight: true,  // 用紙の固定高さを無視
+            renderChanges: false,
+            defaultFont: "MS Mincho" // フォントが読み込めない場合のフォールバック明朝体
           });
         } else if (item.type === 'image') {
           const blob = new Blob([buffer]);
@@ -564,6 +589,8 @@ function clearDocumentView() {
   currentDocData = null;
   document.getElementById('doc-title').innerText = '左のリストから問題を選択してください';
   document.getElementById('edit-current-btn').classList.add('hidden');
+  toggleAnswerBtn.classList.add('hidden');
+  answerPane.classList.add('hidden');
   document.getElementById('question-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>';
   document.getElementById('answer-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>解答解説はここに表示されます。</p></div>';
 }
