@@ -30,7 +30,6 @@ const firebaseConfig = {
 let app, auth, db;
 let currentUser = null;
 let selectedDocId = null;
-let activeTab = 'question'; 
 let currentDocData = null;
 let allDocuments = [];
 let allCollections = [];
@@ -44,13 +43,8 @@ try {
   auth = getAuth(app);
   db = getFirestore(app);
 
-  // オフラインキャッシュの有効化（接続が一時的に不安定でもエラーで止めない処理）
   enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn("複数のタブでアプリが開かれているため、キャッシュは1つのタブでのみ無効化されました。");
-    } else if (err.code === 'unimplemented') {
-      console.warn("お使いのブラウザはオフラインキャッシュに対応していません。");
-    }
+    console.warn("オフラインキャッシュの競合（他タブが開いている可能性）:", err.code);
   });
 
   setPersistence(auth, browserLocalPersistence).catch(err => {
@@ -60,6 +54,7 @@ try {
   console.error("Firebase初期化失敗:", e);
 }
 
+// 安定した認証状態の監視と初期化トリガー
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   updateAuthUI(user);
@@ -120,6 +115,7 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
 
+// 右上の ≡ ボタン (正誤記録メニュー)
 document.getElementById('header-menu-btn').addEventListener('click', () => {
   if (!currentDocData) {
     alert("まず左のリストから問題を選択してください。");
@@ -279,6 +275,7 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
+// ファイル処理・詳細エラーハンドリング
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
@@ -304,7 +301,7 @@ async function processFiles(fileList) {
         fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
       } catch (e) {
         console.warn("HEIC変換スキップ:", e);
-        throw new Error(`ファイル「${file.name}」のHEIC形式解析に失敗しました。対応していない画像形式の可能性があります。`);
+        throw new Error(`ファイル「${file.name}」のHEIC形式解析に失敗しました。`);
       }
     }
 
@@ -331,7 +328,7 @@ async function processFiles(fileList) {
           fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
         }
       } else {
-        throw new Error(`ファイル「${fileName}」はサポートされていない拡張子・形式です。(.docx, .pdf, 画像に対応)`);
+        throw new Error(`ファイル「${fileName}」はサポートされていない形式です。(.docx, .pdf, 画像に対応)`);
       }
 
       materials.push({
@@ -452,13 +449,6 @@ function selectDocument(docData) {
 
   document.getElementById('doc-title').innerText = docData.title;
   document.getElementById('edit-current-btn').classList.remove('hidden');
-  
-  if (docData.answerText || (docData.answerMaterials && docData.answerMaterials.length > 0)) {
-    document.getElementById('tab-answer').classList.remove('hidden');
-  } else {
-    document.getElementById('tab-answer').classList.add('hidden');
-    activeTab = 'question';
-  }
 
   updateModalStats();
   renderContent();
@@ -495,37 +485,25 @@ async function recordResult(type) {
   }
 }
 
-document.getElementById('tab-question').addEventListener('click', () => {
-  activeTab = 'question';
-  updateTabStyle();
-  renderContent();
-});
-
-document.getElementById('tab-answer').addEventListener('click', () => {
-  activeTab = 'answer';
-  updateTabStyle();
-  renderContent();
-});
-
-function updateTabStyle() {
-  const qTab = document.getElementById('tab-question');
-  const aTab = document.getElementById('tab-answer');
-  if (activeTab === 'question') {
-    qTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
-    aTab.className = "px-3 py-1 font-medium text-gray-500 hover:text-gray-700 text-xs focus:outline-none";
-  } else {
-    aTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
-    qTab.className = "px-3 py-1 font-medium text-gray-500 hover:text-gray-700 text-xs focus:outline-none";
-  }
-}
-
+// 左右二分割ペインへのレンダリング処理
 async function renderContent() {
   if (!currentDocData) return;
-  const displayArea = document.getElementById('content-display-area');
+  
+  // 問題ペインの描画
+  await renderPaneContent('question-display-area', currentDocData.questionText, currentDocData.questionMaterials);
+  
+  // 解答解説ペインの描画
+  await renderPaneContent('answer-display-area', currentDocData.answerText, currentDocData.answerMaterials, "解答解説は登録されていません。");
+}
+
+async function renderPaneContent(containerId, textVal, materials, emptyMsg = "データはありません。") {
+  const displayArea = document.getElementById(containerId);
   displayArea.innerHTML = '';
 
-  const textVal = activeTab === 'question' ? currentDocData.questionText : currentDocData.answerText;
-  const materials = activeTab === 'question' ? currentDocData.questionMaterials : currentDocData.answerMaterials;
+  if (!textVal && (!materials || materials.length === 0)) {
+    displayArea.innerHTML = `<div class="text-center text-gray-400 py-10"><p class="text-xs">${emptyMsg}</p></div>`;
+    return;
+  }
 
   if (textVal) {
     const textDiv = document.createElement('div');
@@ -537,13 +515,19 @@ async function renderContent() {
   if (materials && materials.length > 0) {
     for (let item of materials) {
       const container = document.createElement('div');
-      container.className = "custom-content-viewer border rounded-lg p-2";
+      container.className = "custom-content-viewer border rounded-lg p-2 bg-white";
 
       try {
         const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
 
         if (item.type === 'docx') {
-          await docx.renderAsync(buffer, container);
+          // docx-preview による段落や番号付きリストのレンダリング
+          await docx.renderAsync(buffer, container, null, {
+            inWrapper: true,
+            ignoreWidth: false,
+            ignoreHeight: false,
+            renderChanges: false
+          });
         } else if (item.type === 'image') {
           const blob = new Blob([buffer]);
           const url = URL.createObjectURL(blob);
@@ -580,5 +564,6 @@ function clearDocumentView() {
   currentDocData = null;
   document.getElementById('doc-title').innerText = '左のリストから問題を選択してください';
   document.getElementById('edit-current-btn').classList.add('hidden');
-  document.getElementById('content-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>データを選択してください。</p></div>';
+  document.getElementById('question-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>';
+  document.getElementById('answer-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>解答解説はここに表示されます。</p></div>';
 }
