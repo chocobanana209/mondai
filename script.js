@@ -49,7 +49,6 @@ try {
   });
 } catch (e) {
   console.error("Firebase初期化失敗:", e);
-  alert("Firebaseの初期化に失敗しました。設定を確認してください。");
 }
 
 // 認証状態の監視
@@ -103,7 +102,6 @@ document.getElementById('login-btn').addEventListener('click', async () => {
   try {
     await signInWithPopup(auth, provider);
   } catch (e) {
-    console.error("ログインエラー:", e);
     alert(`ログインに失敗しました: ${e.message}`);
   }
 });
@@ -115,10 +113,9 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
 
-// リアルタイムデータ同期（リスナー設定）
+// リアルタイムデータ同期
 function setupRealtimeListeners() {
   detachRealtimeListeners();
-
   if (!currentUser) return;
 
   const qDocs = query(collection(db, "users", currentUser.uid, "documents"), orderBy("updatedAt", "desc"));
@@ -134,7 +131,7 @@ function setupRealtimeListeners() {
       }
     }
   }, (error) => {
-    console.error("ドキュメントリスナーエラー (権限や接続を確認してください):", error);
+    console.error("ドキュメントリスナーエラー:", error);
   });
 
   const qColls = query(collection(db, "users", currentUser.uid, "collections"), orderBy("updatedAt", "desc"));
@@ -152,7 +149,7 @@ function detachRealtimeListeners() {
   if (unsubscribeCollections) unsubscribeCollections();
 }
 
-// ビュー切り替え (問題一覧 / 問題集)
+// ビュー切り替え
 document.getElementById('nav-docs').addEventListener('click', () => {
   currentMainView = 'documents';
   document.getElementById('nav-docs').className = "flex-1 py-1.5 text-xs font-bold text-blue-600 bg-white rounded shadow-sm";
@@ -264,10 +261,13 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
-// ファイル変換処理
+// ファイル変換処理（安全対策版）
 async function processFiles(fileList) {
   const materials = [];
+  if (!fileList || fileList.length === 0) return materials;
+
   for (let file of fileList) {
+    if (!file) continue;
     const buffer = await file.arrayBuffer();
     const base64 = await arrayBufferToBase64(buffer);
     const compressed = LZString.compressToUTF16(base64);
@@ -334,7 +334,7 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理（エラーアラート付き）
+// 保存処理
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -368,8 +368,18 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       updatedAt: serverTimestamp()
     };
 
-    if (qMaterials.length > 0 || !editingId) payload.questionMaterials = qMaterials;
-    if (aMaterials.length > 0 || !editingId) payload.answerMaterials = aMaterials;
+    // ファイルが選択されている場合のみ配列をセット（空の不正な配列を登録しない）
+    if (qMaterials.length > 0) {
+      payload.questionMaterials = qMaterials;
+    } else if (!editingId) {
+      payload.questionMaterials = [];
+    }
+
+    if (aMaterials.length > 0) {
+      payload.answerMaterials = aMaterials;
+    } else if (!editingId) {
+      payload.answerMaterials = [];
+    }
 
     await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
 
