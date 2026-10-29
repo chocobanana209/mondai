@@ -128,7 +128,7 @@ document.getElementById('close-stats-modal').addEventListener('click', () => {
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// 解答解説ペインのトグル（ボタンで表示／非表示）
+// 解答解説ペインのトグル
 const answerPane = document.getElementById('answer-pane');
 const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
 const closeAnswerBtn = document.getElementById('close-answer-pane-btn');
@@ -152,6 +152,7 @@ function setupRealtimeListeners() {
     allDocuments = [];
     snapshot.forEach(d => allDocuments.push({ id: d.id, ...d.data() }));
     renderCurrentView();
+    updateSubjectAndUnitDatalists(); // 登録用サジェストの更新
     
     if (selectedDocId) {
       const updated = allDocuments.find(d => d.id === selectedDocId);
@@ -177,6 +178,22 @@ function setupRealtimeListeners() {
 function detachRealtimeListeners() {
   if (unsubscribeDocs) unsubscribeDocs();
   if (unsubscribeCollections) unsubscribeCollections();
+}
+
+// 登録済みの中から教科名・単元名を抽出して使い回せるようにサジェストを更新
+function updateSubjectAndUnitDatalists() {
+  const subjects = [...new Set(allDocuments.map(d => d.subject).filter(Boolean))];
+  const units = [...new Set(allDocuments.map(d => d.unit).filter(Boolean))];
+
+  const subList = document.getElementById('subject-list');
+  const unitList = document.getElementById('unit-list');
+  
+  if (subList) {
+    subList.innerHTML = subjects.map(s => `<option value="${s}">`).join('');
+  }
+  if (unitList) {
+    unitList.innerHTML = units.map(u => `<option value="${u}">`).join('');
+  }
 }
 
 document.getElementById('nav-docs').addEventListener('click', () => {
@@ -207,14 +224,20 @@ function renderDocumentList(docs) {
     const isSelected = data.id === selectedDocId;
     item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${isSelected ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50 border-slate-200'}`;
     
+    const subUnitBadge = (data.subject || data.unit) ? `
+      <div class="text-[10px] text-blue-600 font-medium mb-1 truncate">
+        ${data.subject ? `[${data.subject}]` : ''} ${data.unit || ''}
+      </div>` : '';
+
     item.innerHTML = `
       <div class="flex justify-between items-center mb-1">
-        <span class="truncate text-slate-800 flex-1 mr-1" title="${data.title}">${data.title}</span>
+        <span class="truncate text-slate-800 font-bold flex-1 mr-1" title="${data.title}">${data.title}</span>
         <div class="flex gap-1">
           <button class="edit-btn text-blue-500 hover:text-blue-700 px-1">編集</button>
           <button class="del-btn text-red-400 hover:text-red-600 px-1">削除</button>
         </div>
       </div>
+      ${subUnitBadge}
       <div class="flex justify-between text-[10px] text-gray-500">
         <span>正解: ${data.stats?.correct || 0} / 誤答: ${data.stats?.incorrect || 0}</span>
       </div>
@@ -387,6 +410,8 @@ function openRegisterForm(docData = null) {
     document.getElementById('form-header-title').innerText = "問題データの編集";
     document.getElementById('editing-doc-id').value = docData.id;
     document.getElementById('problem-name-input').value = docData.title || '';
+    document.getElementById('subject-input').value = docData.subject || '';
+    document.getElementById('unit-input').value = docData.unit || '';
     document.getElementById('tags-input').value = (docData.tags || []).join(' ');
     document.getElementById('q-text-input').value = docData.questionText || '';
     document.getElementById('a-text-input').value = docData.answerText || '';
@@ -394,6 +419,8 @@ function openRegisterForm(docData = null) {
     document.getElementById('form-header-title').innerText = "新しい問題データの登録";
     document.getElementById('editing-doc-id').value = '';
     document.getElementById('problem-name-input').value = '';
+    document.getElementById('subject-input').value = '';
+    document.getElementById('unit-input').value = '';
     document.getElementById('tags-input').value = '';
     document.getElementById('q-text-input').value = '';
     document.getElementById('a-text-input').value = '';
@@ -412,6 +439,8 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   }
 
   const title = document.getElementById('problem-name-input').value.trim();
+  const subject = document.getElementById('subject-input').value.trim();
+  const unit = document.getElementById('unit-input').value.trim();
   const qText = document.getElementById('q-text-input').value.trim();
   const aText = document.getElementById('a-text-input').value.trim();
   
@@ -436,6 +465,8 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
 
     const rawPayload = {
       title: String(title || "無題の問題"),
+      subject: String(subject || ""),
+      unit: String(unit || ""),
       tags: tags,
       questionText: String(qText),
       answerText: String(aText),
@@ -551,7 +582,6 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
             defaultFont: "MS Mincho"
           });
 
-          // 💡【追加対策】Wordプレビューで段落番号がすべて(1)になってしまうバグを自動で連番に補正
           setTimeout(() => {
             const textNodes = [];
             const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
