@@ -168,8 +168,8 @@
         </div>
       </div>
 
-      <!-- 3. 登録・編集フォーム -->
-      <div id="register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-4xl mx-auto w-full my-auto">
+      <!-- 3. 登録・編集フォーム (my-auto を削除して上部基準に修正) -->
+      <div id="register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-4xl mx-auto w-full">
         <div class="flex justify-between items-center border-b pb-3">
           <h2 id="form-header-title" class="text-base font-bold text-slate-800">新しい問題データの登録</h2>
           <button id="cancel-register-btn" class="text-xs text-slate-500 hover:text-slate-800">キャンセル</button>
@@ -268,7 +268,7 @@
     </div>
   </div>
 
-  <!-- 問題集編集モーダル (ビジュアルカード・ドラッグ＆ドロップ並び替え対応) -->
+  <!-- 問題集編集モーダル -->
   <div id="collection-edit-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-lg w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
       <div class="flex justify-between items-center border-b pb-2">
