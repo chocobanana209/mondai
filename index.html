@@ -268,7 +268,7 @@
     </div>
   </div>
 
-  <!-- 問題集編集モーダル -->
+  <!-- 問題集編集モーダル (問題並び替え対応) -->
   <div id="collection-edit-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
       <div class="flex justify-between items-center border-b pb-2">
@@ -281,7 +281,10 @@
         <input type="text" id="coll-name-input" class="w-full text-xs border border-slate-300 rounded p-2 focus:outline-none focus:border-blue-500"/>
       </div>
       <div class="flex-1 overflow-y-auto space-y-1 border rounded p-2 bg-slate-50">
-        <label class="block text-[11px] font-bold text-gray-600 mb-1">含める問題の選択</label>
+        <div class="flex justify-between items-center mb-1">
+          <label class="block text-[11px] font-bold text-gray-600">選択と出題順の設定</label>
+          <span class="text-[10px] text-gray-400">「▲」「▼」で順序入れ替え</span>
+        </div>
         <div id="coll-problems-checkbox-list" class="space-y-1"></div>
       </div>
       <button id="save-coll-modal-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-xs font-bold transition">問題集を保存する</button>
