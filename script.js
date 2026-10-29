@@ -255,37 +255,26 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
-// ファイル処理・HEIC自動変換（安全対策版）
+// ファイル処理・厳格な安全性チェック版
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
 
-  for (let file of fileList) {
-    if (!file) continue;
-
-    let targetFile = file;
-    let fileName = file.name || "attachment";
-    let type = 'raw';
-
-    const isHeic = fileName.match(/\.heic$/i) || file.type === 'image/heic' || file.type === 'image/heif';
-    
-    if (isHeic && typeof heic2any !== 'undefined') {
-      try {
-        const convertedBlob = await heic2any({
-          blob: file,
-          toType: 'image/jpeg',
-          quality: 0.8
-        });
-        targetFile = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-        fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
-      } catch (e) {
-        console.warn("HEIC変換スキップ（元のファイルで処理します）:", e);
-      }
-    }
+  for (let i = 0; i < fileList.length; i++) {
+    const file = fileList[i];
+    if (!file || typeof file.arrayBuffer !== 'function' || file.size === 0) continue;
 
     try {
+      let targetFile = file;
+      let fileName = String(file.name || "attachment");
+      let type = 'raw';
+
       const buffer = await targetFile.arrayBuffer();
+      if (!buffer || buffer.byteLength === 0) continue;
+
       const base64 = await arrayBufferToBase64(buffer);
+      if (!base64) continue;
+
       const compressed = LZString.compressToUTF16(base64);
 
       if (fileName.match(/\.docx$/i)) {
@@ -305,7 +294,7 @@ async function processFiles(fileList) {
         data: String(compressed)
       });
     } catch (err) {
-      console.error("個別ファイルの処理に失敗しました:", err);
+      console.error("個別ファイルの処理中にエラーが発生しました:", err);
     }
   }
   return materials;
@@ -358,7 +347,7 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理
+// 保存処理（ファイルが空の場合や添付ファイルのみでも安全な形式）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -366,8 +355,14 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   }
 
   const title = document.getElementById('problem-name-input').value.trim();
-  if (!title) {
-    alert("タイトルを入力してください。");
+  const qText = document.getElementById('q-text-input').value.trim();
+  const aText = document.getElementById('a-text-input').value.trim();
+  
+  const qFiles = document.getElementById('q-file-input').files;
+  const aFiles = document.getElementById('a-file-input').files;
+
+  if (!title && !qText && (!qFiles || qFiles.length === 0)) {
+    alert("タイトル、または問題文・添付ファイルのいずれかを入力・選択してください。");
     return;
   }
 
@@ -375,9 +370,6 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   const docId = editingId || `doc_${Date.now()}`;
 
   try {
-    const qFiles = document.getElementById('q-file-input').files;
-    const aFiles = document.getElementById('a-file-input').files;
-
     const qMaterials = await processFiles(qFiles);
     const aMaterials = await processFiles(aFiles);
 
@@ -386,14 +378,24 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       .filter(t => t.length > 0);
 
     const payload = {
-      title: String(title),
+      title: String(title || "無題の問題"),
       tags: tags,
-      questionText: String(document.getElementById('q-text-input').value || ""),
-      answerText: String(document.getElementById('a-text-input').value || ""),
-      updatedAt: Date.now(),
-      questionMaterials: qMaterials,
-      answerMaterials: aMaterials
+      questionText: String(qText),
+      answerText: String(aText),
+      updatedAt: Date.now()
     };
+
+    if (qMaterials && qMaterials.length > 0) {
+      payload.questionMaterials = qMaterials;
+    } else {
+      payload.questionMaterials = [];
+    }
+
+    if (aMaterials && aMaterials.length > 0) {
+      payload.answerMaterials = aMaterials;
+    } else {
+      payload.answerMaterials = [];
+    }
 
     await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
 
