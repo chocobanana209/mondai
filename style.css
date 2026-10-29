@@ -5,7 +5,20 @@
   border-right: none;
 }
 
-/* Wordプレビューおよびコンテンツビューアのスタイル */
+/* テキストおよびWordプレビュー用の共通スタイル（白背景・明朝体・折り返し） */
+.content-text-box {
+  font-family: "Times New Roman", "MS Mincho", "Hiragino Mincho ProN", serif;
+  word-break: break-all;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  font-size: 0.9rem;
+}
+
 .custom-content-viewer {
   font-family: "Times New Roman", "MS Mincho", "Hiragino Mincho ProN", serif;
   word-break: break-all;
@@ -14,7 +27,7 @@
   line-height: 1.6;
 }
 
-/* Word文書の「用紙サイズ・背景・固定幅」を無視して画面幅に合わせる */
+/* Word文書の用紙サイズ・背景を無視して画面幅に合わせる */
 .custom-content-viewer .docx-wrapper {
   background: transparent !important;
   padding: 0 !important;
@@ -30,7 +43,6 @@
   box-sizing: border-box !important;
 }
 
-/* Word内の段落・テキストの折り返しとフォント強制適用 */
 .custom-content-viewer p, 
 .custom-content-viewer span, 
 .custom-content-viewer div {
@@ -40,17 +52,16 @@
   max-width: 100% !important;
 }
 
-/* Word内の段落番号（リスト）のインデント・表示調整 */
 .custom-content-viewer ol {
   list-style-type: decimal;
   padding-left: 1.5em;
 }
+
 .custom-content-viewer ul {
   list-style-type: disc;
   padding-left: 1.5em;
 }
 
-/* 埋め込み画像・PDFキャンバスのレスポンシブ化 */
 .content-image {
   max-width: 100%;
   height: auto;
