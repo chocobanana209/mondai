@@ -31,6 +31,7 @@ let app, auth, db;
 let currentUser = null;
 let selectedDocId = null;
 let currentDocData = null;
+let currentCollectionData = null; // 💡 修正: 変数宣言の追加
 let allDocuments = [];
 let allCollections = [];
 let currentMainView = 'documents'; 
@@ -323,7 +324,6 @@ function renderCollectionList(colls) {
   });
 }
 
-// 問題集の新規作成・編集用モーダルコントロール
 function openCollectionEditorModal(collData = null) {
   const modal = document.getElementById('collection-edit-modal');
   const titleEl = document.getElementById('coll-modal-title');
@@ -481,7 +481,6 @@ document.getElementById('exit-collection-btn').addEventListener('click', () => {
   clearDocumentView();
 });
 
-// ファイル処理
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
@@ -585,7 +584,6 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 登録時のライブプレビュー更新（テキスト＆ファイル即時レンダリング）
 async function updateLivePreviews() {
   const qText = document.getElementById('q-text-input').value;
   const aText = document.getElementById('a-text-input').value;
@@ -663,7 +661,6 @@ async function renderPreviewPane(previewId, textVal, files) {
   }
 }
 
-// Wordの自動連番ミスを修正するヘルパー関数
 function fixWordListNumbers(container) {
   setTimeout(() => {
     const textNodes = [];
@@ -774,7 +771,6 @@ function updateModalStats() {
 document.getElementById('btn-record-correct').addEventListener('click', () => recordResult('correct'));
 document.getElementById('btn-record-incorrect').addEventListener('click', () => recordResult('incorrect'));
 
-// 正誤記録（タイムスタンプ付き誤答履歴）
 async function recordResult(type) {
   if (!currentDocData || !currentUser) return;
   const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
