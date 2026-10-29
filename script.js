@@ -464,7 +464,6 @@ function selectDocument(docData) {
   document.getElementById('doc-title').innerText = docData.title;
   document.getElementById('edit-current-btn').classList.remove('hidden');
 
-  // 解答解説が存在する場合はボタンを表示、なければ非表示
   const hasAnswer = docData.answerText || (docData.answerMaterials && docData.answerMaterials.length > 0);
   if (hasAnswer) {
     toggleAnswerBtn.classList.remove('hidden');
@@ -473,7 +472,6 @@ function selectDocument(docData) {
     answerPane.classList.add('hidden');
   }
 
-  // 初期状態では解答ペインは閉じておく（ハイブリッド）
   answerPane.classList.add('hidden');
   toggleAnswerBtn.innerText = "💡 解答解説を表示";
 
@@ -545,14 +543,30 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
         const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
 
         if (item.type === 'docx') {
-          // docx-preview（フォント・段落番号の最適化オプション）
           await docx.renderAsync(buffer, container, null, {
             inWrapper: true,
-            ignoreWidth: true,   // 用紙の固定幅を無視して画面幅に合わせる
-            ignoreHeight: true,  // 用紙の固定高さを無視
+            ignoreWidth: true,
+            ignoreHeight: true,
             renderChanges: false,
-            defaultFont: "MS Mincho" // フォントが読み込めない場合のフォールバック明朝体
+            defaultFont: "MS Mincho"
           });
+
+          // 💡【追加対策】Wordプレビューで段落番号がすべて(1)になってしまうバグを自動で連番に補正
+          setTimeout(() => {
+            const textNodes = [];
+            const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+            let node;
+            while (node = walker.nextNode()) {
+              if (node.nodeValue.trim().match(/^[(（]1[)）]|^1\./)) {
+                textNodes.push(node);
+              }
+            }
+            textNodes.forEach((node, index) => {
+              const num = index + 1;
+              node.nodeValue = node.nodeValue.replace(/^[(（]1[)）]/, `(${num})`).replace(/^1\./, `${num}.`);
+            });
+          }, 50);
+
         } else if (item.type === 'image') {
           const blob = new Blob([buffer]);
           const url = URL.createObjectURL(blob);
