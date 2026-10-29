@@ -31,7 +31,7 @@ let app, auth, db;
 let currentUser = null;
 let selectedDocId = null;
 let currentDocData = null;
-let currentCollectionData = null; // 💡 修正: 変数宣言の追加
+let currentCollectionData = null;
 let allDocuments = [];
 let allCollections = [];
 let currentMainView = 'documents'; 
@@ -41,6 +41,9 @@ let collectionPlayIndex = 0;
 
 let unsubscribeDocs = null;
 let unsubscribeCollections = null;
+
+// 正誤記録モーダルで選択中の一時ステータス
+let pendingResultType = null; // 'correct' または 'incorrect'
 
 try {
   app = initializeApp(firebaseConfig);
@@ -126,6 +129,8 @@ document.getElementById('header-menu-btn').addEventListener('click', () => {
     alert("まず問題を選択するか、問題集を開いてください。");
     return;
   }
+  pendingResultType = null;
+  updatePendingResultUI();
   document.getElementById('stats-modal').classList.remove('hidden');
   updateModalStats();
 });
@@ -224,7 +229,7 @@ function renderDocumentList(docs) {
     const isSelected = data.id === selectedDocId;
     item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${isSelected ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50 border-slate-200'}`;
     
-    const subUnitBadge = (data.subject || data.unit) ? `
+    const subUnitBadge = (data.subject || data.unit || data.subQuestion) ? `
       <div class="text-[10px] text-blue-600 font-medium mb-1 truncate">
         ${data.subject ? `[${data.subject}]` : ''} ${data.unit || ''} ${data.subQuestion ? `(${data.subQuestion})` : ''}
       </div>` : '';
@@ -768,17 +773,42 @@ function updateModalStats() {
   document.getElementById('stat-incorrect').innerText = currentDocData.stats?.incorrect || 0;
 }
 
-document.getElementById('btn-record-correct').addEventListener('click', () => recordResult('correct'));
-document.getElementById('btn-record-incorrect').addEventListener('click', () => recordResult('incorrect'));
+// 正誤記録ボタンのイベント（押しただけでは登録せず、選択状態にして「決定」を表示）
+document.getElementById('btn-select-correct').addEventListener('click', () => {
+  pendingResultType = 'correct';
+  updatePendingResultUI();
+});
 
-async function recordResult(type) {
-  if (!currentDocData || !currentUser) return;
+document.getElementById('btn-select-incorrect').addEventListener('click', () => {
+  pendingResultType = 'incorrect';
+  updatePendingResultUI();
+});
+
+function updatePendingResultUI() {
+  const btnCorrect = document.getElementById('btn-select-correct');
+  const btnIncorrect = document.getElementById('btn-select-incorrect');
+  const btnCommit = document.getElementById('btn-record-commit');
+
+  btnCorrect.className = "border-2 py-2 rounded text-xs font-bold transition shadow-xs " + (pendingResultType === 'correct' ? "bg-green-600 text-white border-green-600 ring-2 ring-green-300" : "border-green-600 text-green-700 hover:bg-green-50");
+  btnIncorrect.className = "border-2 py-2 rounded text-xs font-bold transition shadow-xs " + (pendingResultType === 'incorrect' ? "bg-red-600 text-white border-red-600 ring-2 ring-red-300" : "border-red-600 text-red-700 hover:bg-red-50");
+
+  if (pendingResultType) {
+    btnCommit.classList.remove('hidden');
+    btnCommit.innerText = `${pendingResultType === 'correct' ? '【○ 正解】' : '【× 誤答】'} で決定する`;
+  } else {
+    btnCommit.classList.add('hidden');
+  }
+}
+
+// 決定ボタンを押してはじめて保存
+document.getElementById('btn-record-commit').addEventListener('click', async () => {
+  if (!pendingResultType || !currentDocData || !currentUser) return;
+
   const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
   const history = currentDocData.history || [];
-
   const timestamp = new Date().toLocaleString('ja-JP');
 
-  if (type === 'correct') {
+  if (pendingResultType === 'correct') {
     stats.correct++;
   } else {
     stats.incorrect++;
@@ -794,10 +824,14 @@ async function recordResult(type) {
       stats: stats, 
       history: history 
     }, { merge: true });
+
+    document.getElementById('stats-modal').classList.add('hidden');
+    pendingResultType = null;
   } catch (e) {
     console.error("正誤の保存に失敗:", e);
+    alert("保存に失敗しました。");
   }
-}
+});
 
 async function renderContent() {
   if (!currentDocData) return;
