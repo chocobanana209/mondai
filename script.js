@@ -38,6 +38,8 @@ let currentMainView = 'documents';
 
 let collectionPlayList = [];
 let collectionPlayIndex = 0;
+let isPlayingCollection = false; // 問題集プレイ中フラグ
+let isContinuousAnswerOn = false; // 連続解答モード（ON/OFF）
 
 let unsubscribeDocs = null;
 let unsubscribeCollections = null;
@@ -156,6 +158,7 @@ closeAnswerBtn.addEventListener('click', () => {
   toggleAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
+// 問題集プレイ用解答解説ペインのトグル
 const collAnswerPane = document.getElementById('coll-answer-pane');
 const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
 const closeCollAnswerBtn = document.getElementById('close-coll-answer-pane-btn');
@@ -168,6 +171,23 @@ toggleCollAnswerBtn.addEventListener('click', () => {
 closeCollAnswerBtn.addEventListener('click', () => {
   collAnswerPane.classList.add('hidden');
   toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
+});
+
+// 💡 連続解答モード切り替えボタンのイベント
+const toggleContinuousBtn = document.getElementById('toggle-continuous-answer-btn');
+const continuousStatusText = document.getElementById('continuous-status-text');
+
+toggleContinuousBtn.addEventListener('click', () => {
+  isContinuousAnswerOn = !isContinuousAnswerOn;
+  if (isContinuousAnswerOn) {
+    continuousStatusText.innerText = "ON";
+    continuousStatusText.className = "text-emerald-600 font-bold";
+    toggleContinuousBtn.classList.add('border-emerald-500', 'bg-emerald-50');
+  } else {
+    continuousStatusText.innerText = "OFF";
+    continuousStatusText.className = "text-gray-500 font-semibold";
+    toggleContinuousBtn.classList.remove('border-emerald-500', 'bg-emerald-50');
+  }
 });
 
 function setupRealtimeListeners() {
@@ -267,6 +287,19 @@ function renderDocumentList(docs) {
 
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('del-btn') || e.target.classList.contains('edit-btn')) return;
+      
+      // 💡 問題集プレイ中にサイドバーから問題をクリックした場合のジャンプ対応
+      if (isPlayingCollection) {
+        const indexInPlay = collectionPlayList.findIndex(d => d.id === data.id);
+        if (indexInPlay !== -1) {
+          collectionPlayIndex = indexInPlay;
+          renderCollectionPlayerCurrent();
+        } else {
+          alert("この問題はこの問題集に含まれていません。");
+        }
+        return;
+      }
+
       selectDocument(data);
     });
 
@@ -427,7 +460,6 @@ function openCollectionEditorModal(collData = null) {
   renderCollectionProblemsList(collData ? (collData.documentIds || []) : []);
 }
 
-// 🖼️ 画像サムネイル/仮生成プレビュー付きドラッグ＆ドロップ並び替えリスト
 function renderCollectionProblemsList(selectedIds) {
   const checkboxListEl = document.getElementById('coll-problems-checkbox-list');
   checkboxListEl.innerHTML = '';
@@ -448,7 +480,6 @@ function renderCollectionProblemsList(selectedIds) {
     itemDiv.draggable = true;
     itemDiv.dataset.index = index;
 
-    // 画像マテリアルが存在する場合はそのサムネイルを表示、ない場合はテキストの仮生成カードを表示
     let previewElementHtml = '';
     const imgMat = docData.questionMaterials ? docData.questionMaterials.find(m => m.type === 'image') : null;
 
@@ -482,7 +513,6 @@ function renderCollectionProblemsList(selectedIds) {
       </div>
     `;
 
-    // ドラッグ＆ドロップ イベント処理
     itemDiv.addEventListener('dragstart', (e) => {
       draggedIndex = index;
       itemDiv.classList.add('dragging');
@@ -510,7 +540,6 @@ function renderCollectionProblemsList(selectedIds) {
       renderCollectionProblemsList(currentCheckState);
     });
 
-    // 「▲」ボタン
     itemDiv.querySelector('.btn-move-up').addEventListener('click', (e) => {
       e.stopPropagation();
       if (index > 0) {
@@ -522,7 +551,6 @@ function renderCollectionProblemsList(selectedIds) {
       }
     });
 
-    // 「▼」ボタン
     itemDiv.querySelector('.btn-move-down').addEventListener('click', (e) => {
       e.stopPropagation();
       if (index < editingCollectionOrder.length - 1) {
@@ -602,12 +630,16 @@ function startCustomCollectionPlay(collection, mode) {
   collectionPlayList = list;
   collectionPlayIndex = 0;
   currentCollectionData = collection;
+  isPlayingCollection = true; // プレイ中フラグON
 
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.remove('hidden');
 
   document.getElementById('collection-player-title').innerText = `${collection.name} (${mode === 'random' ? 'ランダム出題' : '順番に出題'})`;
+  
+  // 解答表示エリアを初期化
+  document.getElementById('coll-a-display-area').innerHTML = '';
   renderCollectionPlayerCurrent();
 }
 
@@ -615,19 +647,26 @@ async function renderCollectionPlayerCurrent() {
   const qContainer = document.getElementById('coll-q-display-area');
   const aContainer = document.getElementById('coll-a-display-area');
   qContainer.innerHTML = '';
-  aContainer.innerHTML = '';
+
+  // 連続解答モードがOFFの場合は、新しい問題に切り替えた時に解答エリアをクリア
+  if (!isContinuousAnswerOn) {
+    aContainer.innerHTML = '';
+  }
 
   if (collectionPlayIndex >= collectionPlayList.length) {
-    document.getElementById('collection-player-content').innerHTML = `
+    document.getElementById('collection-player-container').innerHTML = `
       <div class="text-center py-20 space-y-4">
         <h3 class="text-lg font-bold text-slate-800">🎉 問題集をすべてクリアしました！</h3>
         <button id="restart-coll-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-bold">最初からやり直す</button>
       </div>
     `;
-    document.getElementById('restart-coll-btn').addEventListener('click', () => {
-      collectionPlayIndex = 0;
-      renderCollectionPlayerCurrent();
-    });
+    const restartBtn = document.getElementById('restart-coll-btn');
+    if (restartBtn) {
+      restartBtn.addEventListener('click', () => {
+        collectionPlayIndex = 0;
+        renderCollectionPlayerCurrent();
+      });
+    }
     return;
   }
 
@@ -644,12 +683,46 @@ async function renderCollectionPlayerCurrent() {
     toggleCollAnswerBtn.classList.add('hidden');
     collAnswerPane.classList.add('hidden');
   }
-  collAnswerPane.classList.add('hidden');
-  toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
+  
+  // 初回表示時や連続モードでない場合はペインを隠す
+  if (!isContinuousAnswerOn) {
+    collAnswerPane.classList.add('hidden');
+    toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
+  }
 
   await renderPaneContentForContainer(qContainer, docData.questionText, docData.questionMaterials);
-  await renderPaneContentForContainer(aContainer, docData.answerText, docData.answerMaterials, "解答解説はありません。");
+  
+  // 連続解答モードがONの場合、問題切り替え時に自動で解答解説エリアにも現在の解答を追加（縦方向へ連続蓄積）
+  if (isContinuousAnswerOn && hasAnswer) {
+    collAnswerPane.classList.remove('hidden');
+    toggleCollAnswerBtn.innerText = "💡 解答解説を隠す";
+    
+    // 問題別の区切り見出し付きで解答を追加
+    const wrapper = document.createElement('div');
+    wrapper.className = "border-b pb-3 mb-3 space-y-2";
+    wrapper.innerHTML = `<div class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">▼ ${docData.title} の解答解説</div>`;
+    
+    const tempContainer = document.createElement('div');
+    await renderPaneContentForContainer(tempContainer, docData.answerText, docData.answerMaterials, "解答解説はありません。");
+    wrapper.appendChild(tempContainer);
+    aContainer.appendChild(wrapper);
+  } else if (!isContinuousAnswerOn) {
+    await renderPaneContentForContainer(aContainer, docData.answerText, docData.answerMaterials, "解答解説はありません。");
+  }
+
+  // サイドバーの選択状態を更新
+  renderCurrentView();
 }
+
+// 💡 「戻る」ボタン
+document.getElementById('coll-prev-btn').addEventListener('click', () => {
+  if (collectionPlayIndex > 0) {
+    collectionPlayIndex--;
+    renderCollectionPlayerCurrent();
+  } else {
+    alert("これ以上前の問題はありません。");
+  }
+});
 
 document.getElementById('coll-next-btn').addEventListener('click', () => {
   collectionPlayIndex++;
@@ -657,6 +730,7 @@ document.getElementById('coll-next-btn').addEventListener('click', () => {
 });
 
 document.getElementById('exit-collection-btn').addEventListener('click', () => {
+  isPlayingCollection = false;
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('view-mode-container').classList.remove('hidden');
   clearDocumentView();
@@ -1188,7 +1262,7 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
 function clearDocumentView() {
   selectedDocId = null;
   currentDocData = null;
-  document.getElementById('doc-title').innerText = '左のリストから問題を選択してください';
+  document.getElementById('doc-title').innerText = '左のリストから問題集または問題を選択してください';
   document.getElementById('edit-current-btn').classList.add('hidden');
   toggleAnswerBtn.classList.add('hidden');
   answerPane.classList.add('hidden');
