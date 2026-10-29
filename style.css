@@ -14,6 +14,22 @@
   line-height: 1.6;
 }
 
+/* Word文書の「用紙サイズ・背景・固定幅」を無視して画面幅に合わせる */
+.custom-content-viewer .docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  display: block !important;
+  width: 100% !important;
+}
+
+.custom-content-viewer section.docx {
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 10px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
 /* Word内の段落・テキストの折り返しとフォント強制適用 */
 .custom-content-viewer p, 
 .custom-content-viewer span, 
@@ -21,7 +37,7 @@
   font-family: inherit !important;
   word-break: break-all !important;
   overflow-wrap: break-word !important;
-  max-width: 100%;
+  max-width: 100% !important;
 }
 
 /* Word内の段落番号（リスト）のインデント・表示調整 */
