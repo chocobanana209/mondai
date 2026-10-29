@@ -1,53 +1,53 @@
-/* 明朝体フォールバック設定および文書レイアウト */
-.docx-viewer, .custom-content-viewer {
-  background-color: #ffffff;
-  min-height: 400px;
-  font-family: "Yu Mincho", "游明朝", "Hiragino Mincho ProN", "MS PMincho", serif !important;
-  overflow-x: auto;
+/* カスタムスタイルシート */
+#sidebar.collapsed {
+  width: 0px;
+  overflow: hidden;
+  border-right: none;
 }
 
-.docx-viewer .docx-wrapper {
-  background: transparent !important;
-  padding: 0 !important;
-  display: inline-block;
-  min-width: 100%;
+/* Wordプレビューおよびコンテンツビューアのスタイル */
+.custom-content-viewer {
+  font-family: "Times New Roman", "MS Mincho", "Hiragino Mincho ProN", serif;
+  word-break: break-all;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  line-height: 1.6;
 }
 
-.docx-viewer section.docx {
-  box-shadow: none !important;
-  margin-bottom: 10px !important;
-  max-width: 100% !important;
-}
-
-.docx-viewer table {
+/* Word内の段落・テキストの折り返しとフォント強制適用 */
+.custom-content-viewer p, 
+.custom-content-viewer span, 
+.custom-content-viewer div {
+  font-family: inherit !important;
+  word-break: break-all !important;
+  overflow-wrap: break-word !important;
   max-width: 100%;
-  overflow-x: auto;
-  display: block;
 }
 
-/* PDFキャンバスレンダリング調整 */
-.pdf-page-canvas {
-  max-width: 100%;
-  height: auto !important;
-  border: 1px solid #e2e8f0;
-  margin-bottom: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+/* Word内の段落番号（リスト）のインデント・表示調整 */
+.custom-content-viewer ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+}
+.custom-content-viewer ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
 }
 
-/* 画像レスポンシブ対応 */
+/* 埋め込み画像・PDFキャンバスのレスポンシブ化 */
 .content-image {
   max-width: 100%;
   height: auto;
-  border-radius: 0.375rem;
-  border: 1px solid #e2e8f0;
-  margin: 8px 0;
+  display: block;
+  margin: 0 auto;
+  border-radius: 6px;
 }
 
-/* サイドバーの折りたたみトランジション */
-aside#sidebar.collapsed {
-  width: 0px !important;
-  min-width: 0px !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  border: none !important;
+.pdf-page-canvas {
+  max-width: 100%;
+  height: auto !important;
+  display: block;
+  margin: 0 auto 10px auto;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border-radius: 4px;
 }
