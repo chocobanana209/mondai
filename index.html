@@ -138,10 +138,15 @@
       <div id="collection-player-container" class="hidden flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="border-b border-slate-200 px-4 py-3 bg-slate-50 flex justify-between items-center flex-wrap gap-2">
           <div class="flex items-center gap-3">
+            <button id="coll-prev-btn" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1.5 rounded-lg font-bold">⬅ 戻る</button>
             <h2 id="collection-player-title" class="font-bold text-slate-800 text-base truncate">問題集プレイ</h2>
             <span id="coll-progress-badge" class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold">1 / 1</span>
           </div>
           <div class="flex items-center gap-2">
+            <!-- 解答の縦向き連続表示ON/OFF切り替えボタン -->
+            <button id="toggle-continuous-answer-btn" class="text-xs bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg transition border border-slate-300" title="次以降の解答を縦に連続表示するか切り替えます">
+              連続解答: <span id="continuous-status-text" class="text-gray-500 font-semibold">OFF</span>
+            </button>
             <button id="toggle-coll-answer-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-xs flex items-center gap-1">
               <span>💡 解答解説を表示</span>
             </button>
@@ -168,7 +173,7 @@
         </div>
       </div>
 
-      <!-- 3. 登録・編集フォーム (my-auto を削除して上部基準に修正) -->
+      <!-- 3. 登録・編集フォーム -->
       <div id="register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-4xl mx-auto w-full">
         <div class="flex justify-between items-center border-b pb-3">
           <h2 id="form-header-title" class="text-base font-bold text-slate-800">新しい問題データの登録</h2>
