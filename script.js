@@ -255,7 +255,7 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
-// ファイル処理・HEIC自動JPEG変換機能
+// ファイル処理・HEIC自動変換（安全対策強化版）
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
@@ -264,11 +264,10 @@ async function processFiles(fileList) {
     if (!file) continue;
 
     let targetFile = file;
-    let fileName = file.name;
+    let fileName = file.name || "attachment";
     let type = 'raw';
 
-    // HEIC画像形式の検出・JPEGへの変換処理
-    const isHeic = file.name.match(/\.heic$/i) || file.type === 'image/heic' || file.type === 'image/heif';
+    const isHeic = fileName.match(/\.heic$/i) || file.type === 'image/heic' || file.type === 'image/heif';
     if (isHeic && typeof heic2any !== 'undefined') {
       try {
         const convertedBlob = await heic2any({
@@ -293,16 +292,16 @@ async function processFiles(fileList) {
       type = 'pdf';
     } else if (targetFile.type.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|webp)$/i)) {
       type = 'image';
-      // 拡張子がjpgになっていない場合は強制的に.jpgに変更
       if (!fileName.match(/\.jpe?g$/i)) {
         fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
       }
     }
 
+    // 必ず純粋なプリミティブ値のオブジェクトのみをプッシュする
     materials.push({
-      fileName: fileName,
-      type: type,
-      data: compressed
+      fileName: String(fileName),
+      type: String(type),
+      data: String(compressed)
     });
   }
   return materials;
@@ -355,6 +354,7 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
+// 保存処理（バリデーションおよびサニタイズ強化版）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -378,27 +378,19 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
     const aMaterials = await processFiles(aFiles);
 
     const tags = document.getElementById('tags-input').value.split(/[, \s]+/)
-      .map(t => t.replace(/^#/, '').trim()).filter(t => t.length > 0);
+      .map(t => t.replace(/^#/, '').trim())
+      .filter(t => t.length > 0);
 
+    // 完全に不正なundefinedや空のネストを排除したペイロードを作成
     const payload = {
-      title: title,
+      title: String(title),
       tags: tags,
-      questionText: document.getElementById('q-text-input').value,
-      answerText: document.getElementById('a-text-input').value,
-      updatedAt: Date.now()
+      questionText: String(document.getElementById('q-text-input').value || ""),
+      answerText: String(document.getElementById('a-text-input').value || ""),
+      updatedAt: Date.now(),
+      questionMaterials: qMaterials,
+      answerMaterials: aMaterials
     };
-
-    if (qMaterials.length > 0) {
-      payload.questionMaterials = qMaterials;
-    } else if (!editingId) {
-      payload.questionMaterials = [];
-    }
-
-    if (aMaterials.length > 0) {
-      payload.answerMaterials = aMaterials;
-    } else if (!editingId) {
-      payload.answerMaterials = [];
-    }
 
     await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
 
@@ -480,7 +472,7 @@ function updateTabStyle() {
     qTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
     aTab.className = "px-3 py-1 font-medium text-gray-500 hover:text-gray-700 text-xs focus:outline-none";
   } else {
-    qTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
+    aTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
     qTab.className = "px-3 py-1 font-medium text-gray-500 hover:text-gray-700 text-xs focus:outline-none";
   }
 }
