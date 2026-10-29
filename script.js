@@ -47,8 +47,8 @@ let pendingSubResults = {};
 let currentFormQMaterials = [];
 let currentFormAMaterials = [];
 
-// 問題集モーダルで順序を保持する配列
 let editingCollectionOrder = [];
+let draggedIndex = null;
 
 try {
   app = initializeApp(firebaseConfig);
@@ -401,7 +401,6 @@ function renderCollectionList(colls) {
   });
 }
 
-// 問題順序入れ替え対応の問題集編集モーダルオープン
 function openCollectionEditorModal(collData = null) {
   const modal = document.getElementById('collection-edit-modal');
   const titleEl = document.getElementById('coll-modal-title');
@@ -415,7 +414,6 @@ function openCollectionEditorModal(collData = null) {
     idEl.value = collData.id;
     nameEl.value = collData.name;
     
-    // 既存のID配列から全問題リストを初期化（登録されていない問題も末尾に配置）
     const existingIds = collData.documentIds || [];
     const notIncluded = allDocuments.filter(d => !existingIds.includes(d.id)).map(d => d.id);
     editingCollectionOrder = [...existingIds, ...notIncluded];
@@ -429,7 +427,7 @@ function openCollectionEditorModal(collData = null) {
   renderCollectionProblemsList(collData ? (collData.documentIds || []) : []);
 }
 
-// 順序入れ替えUI付きの問題リストレンダリング
+// 🖼️ 画像サムネイル/仮生成プレビュー付きドラッグ＆ドロップ並び替えリスト
 function renderCollectionProblemsList(selectedIds) {
   const checkboxListEl = document.getElementById('coll-problems-checkbox-list');
   checkboxListEl.innerHTML = '';
@@ -446,19 +444,75 @@ function renderCollectionProblemsList(selectedIds) {
     const isChecked = selectedIds.includes(docId) ? 'checked' : '';
 
     const itemDiv = document.createElement('div');
-    itemDiv.className = "flex items-center gap-1.5 p-1.5 bg-white border rounded shadow-2xs hover:bg-slate-50 text-xs";
-    
+    itemDiv.className = "coll-sort-item flex items-center gap-2 p-2 bg-white border rounded-lg shadow-2xs hover:border-blue-300 cursor-move text-xs select-none";
+    itemDiv.draggable = true;
+    itemDiv.dataset.index = index;
+
+    // 画像マテリアルが存在する場合はそのサムネイルを表示、ない場合はテキストの仮生成カードを表示
+    let previewElementHtml = '';
+    const imgMat = docData.questionMaterials ? docData.questionMaterials.find(m => m.type === 'image') : null;
+
+    if (imgMat) {
+      try {
+        const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(imgMat.data));
+        const blob = new Blob([buffer]);
+        const imgUrl = URL.createObjectURL(blob);
+        previewElementHtml = `<img src="${imgUrl}" class="card-thumb-preview" alt="Preview"/>`;
+      } catch (e) {
+        previewElementHtml = `<div class="card-text-fallback">画像エラー</div>`;
+      }
+    } else {
+      const sampleText = docData.questionText ? docData.questionText.slice(0, 15) : (docData.title || '問題');
+      previewElementHtml = `<div class="card-text-fallback font-serif">${sampleText}</div>`;
+    }
+
     itemDiv.innerHTML = `
-      <input type="checkbox" value="${docData.id}" ${isChecked} class="coll-prob-checkbox rounded text-blue-600 focus:ring-0">
-      <span class="truncate flex-1 font-medium text-slate-800">${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}</span>
-      <div class="flex gap-0.5">
-        <button type="button" class="btn-move-up p-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded font-bold" title="上へ移動">▲</button>
-        <button type="button" class="btn-move-down p-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded font-bold" title="下へ移動">▼</button>
+      <div class="flex items-center gap-1">
+        <span class="text-gray-400 font-bold cursor-grab">⋮⋮</span>
+        <input type="checkbox" value="${docData.id}" ${isChecked} class="coll-prob-checkbox rounded text-blue-600 focus:ring-0">
+      </div>
+      ${previewElementHtml}
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-slate-800 truncate" title="${docData.title}">${docData.title}</div>
+        <div class="text-[10px] text-gray-500 truncate">${docData.subQuestion ? '('+docData.subQuestion+')' : ''} ${docData.subject || ''}</div>
+      </div>
+      <div class="flex flex-col gap-0.5">
+        <button type="button" class="btn-move-up p-1 text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded font-bold leading-none">▲</button>
+        <button type="button" class="btn-move-down p-1 text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded font-bold leading-none">▼</button>
       </div>
     `;
 
-    // 順序の「上へ移動」
-    itemDiv.querySelector('.btn-move-up').addEventListener('click', () => {
+    // ドラッグ＆ドロップ イベント処理
+    itemDiv.addEventListener('dragstart', (e) => {
+      draggedIndex = index;
+      itemDiv.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    itemDiv.addEventListener('dragend', () => {
+      itemDiv.classList.remove('dragging');
+      draggedIndex = null;
+    });
+
+    itemDiv.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+
+    itemDiv.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (draggedIndex === null || draggedIndex === index) return;
+
+      const currentCheckState = getCurrentlyCheckedIds();
+      const targetItem = editingCollectionOrder.splice(draggedIndex, 1)[0];
+      editingCollectionOrder.splice(index, 0, targetItem);
+
+      renderCollectionProblemsList(currentCheckState);
+    });
+
+    // 「▲」ボタン
+    itemDiv.querySelector('.btn-move-up').addEventListener('click', (e) => {
+      e.stopPropagation();
       if (index > 0) {
         const currentCheckState = getCurrentlyCheckedIds();
         const temp = editingCollectionOrder[index];
@@ -468,8 +522,9 @@ function renderCollectionProblemsList(selectedIds) {
       }
     });
 
-    // 順序の「下へ移動」
-    itemDiv.querySelector('.btn-move-down').addEventListener('click', () => {
+    // 「▼」ボタン
+    itemDiv.querySelector('.btn-move-down').addEventListener('click', (e) => {
+      e.stopPropagation();
       if (index < editingCollectionOrder.length - 1) {
         const currentCheckState = getCurrentlyCheckedIds();
         const temp = editingCollectionOrder[index];
@@ -483,7 +538,6 @@ function renderCollectionProblemsList(selectedIds) {
   });
 }
 
-// 現在チェックが入っているID一覧を取得するヘルパー
 function getCurrentlyCheckedIds() {
   const checkboxes = document.querySelectorAll('.coll-prob-checkbox:checked');
   return Array.from(checkboxes).map(cb => cb.value);
@@ -498,7 +552,6 @@ document.getElementById('create-collection-btn').addEventListener('click', () =>
   openCollectionEditorModal(null);
 });
 
-// 問題集の保存処理（規定順序をそのまま保持）
 document.getElementById('save-coll-modal-btn').addEventListener('click', async () => {
   const collId = document.getElementById('editing-coll-id').value || `coll_${Date.now()}`;
   const collName = document.getElementById('coll-name-input').value.trim();
@@ -509,7 +562,6 @@ document.getElementById('save-coll-modal-btn').addEventListener('click', async (
   }
 
   const selectedSet = new Set(getCurrentlyCheckedIds());
-  // 並び順（editingCollectionOrder）の中からチェックされた問題のみを順番どおり抽出
   const orderedSelectedIds = editingCollectionOrder.filter(id => selectedSet.has(id));
 
   try {
