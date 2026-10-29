@@ -31,12 +31,10 @@ let app, auth, db;
 let currentUser = null;
 let selectedDocId = null;
 let currentDocData = null;
-let currentCollectionData = null;
 let allDocuments = [];
 let allCollections = [];
 let currentMainView = 'documents'; 
 
-// 問題集プレイ中の状態管理
 let collectionPlayList = [];
 let collectionPlayIndex = 0;
 
@@ -122,7 +120,6 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
 
-// 右上の ≡ ボタン (正誤記録メニュー)
 document.getElementById('header-menu-btn').addEventListener('click', () => {
   if (!currentDocData && currentMainView !== 'collections') {
     alert("まず問題を選択するか、問題集を開いてください。");
@@ -136,7 +133,6 @@ document.getElementById('close-stats-modal').addEventListener('click', () => {
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// 解答解説ペインのトグル
 const answerPane = document.getElementById('answer-pane');
 const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
 const closeAnswerBtn = document.getElementById('close-answer-pane-btn');
@@ -272,7 +268,6 @@ function renderDocumentList(docs) {
   });
 }
 
-// 問題集リストの描画（既存問題の選択機能付き）
 function renderCollectionList(colls) {
   const container = document.getElementById('sidebar-list');
   container.innerHTML = colls.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
@@ -321,61 +316,95 @@ function renderCollectionList(colls) {
 
     item.querySelector('.edit-coll').addEventListener('click', (e) => {
       e.stopPropagation();
-      openCollectionEditor(c);
+      openCollectionEditorModal(c);
     });
 
     container.appendChild(item);
   });
 }
 
-// 問題集の作成・編集ダイアログ（既存問題の選択チェックボックス付き）
-async function openCollectionEditor(collData = null) {
-  const collName = collData ? collData.name : prompt("新しい問題集の名前を入力してください:");
-  if (!collName || !currentUser) return;
+// 問題集の新規作成・編集用モーダルコントロール
+function openCollectionEditorModal(collData = null) {
+  const modal = document.getElementById('collection-edit-modal');
+  const titleEl = document.getElementById('coll-modal-title');
+  const idEl = document.getElementById('editing-coll-id');
+  const nameEl = document.getElementById('coll-name-input');
+  const checkboxListEl = document.getElementById('coll-problems-checkbox-list');
+
+  modal.classList.remove('hidden');
+  checkboxListEl.innerHTML = '';
+
+  if (collData) {
+    titleEl.innerText = "問題集の編集";
+    idEl.value = collData.id;
+    nameEl.value = collData.name;
+  } else {
+    titleEl.innerText = "新しい問題集の作成";
+    idEl.value = '';
+    nameEl.value = '';
+  }
 
   const currentIds = collData && collData.documentIds ? collData.documentIds : [];
-  
-  // 簡易的な問題選択モーダル用のHTMLプロンプトまたはダイアログ構築
-  let promptHtml = `問題集「${collName}」に含める問題を選択してください。\n\n`;
-  allDocuments.forEach((doc, idx) => {
-    promptHtml += `[${currentIds.includes(doc.id) ? '✓' : ' '}] ${idx + 1}: ${doc.title} ${doc.subQuestion ? '('+doc.subQuestion+')' : ''}\n`;
+
+  if (allDocuments.length === 0) {
+    checkboxListEl.innerHTML = '<p class="text-gray-400 text-xs">登録されている問題がありません。</p>';
+    return;
+  }
+
+  allDocuments.forEach(doc => {
+    const isChecked = currentIds.includes(doc.id) ? 'checked' : '';
+    const div = document.createElement('label');
+    div.className = "flex items-center gap-2 p-1 hover:bg-slate-100 rounded cursor-pointer text-xs";
+    div.innerHTML = `
+      <input type="checkbox" value="${doc.id}" ${isChecked} class="coll-prob-checkbox rounded text-blue-600 focus:ring-0">
+      <span class="truncate flex-1">${doc.title} ${doc.subQuestion ? '('+doc.subQuestion+')' : ''}</span>
+      <span class="text-[10px] text-gray-400">${doc.subject || ''}</span>
+    `;
+    checkboxListEl.appendChild(div);
   });
-  
-  const selectedNumsStr = prompt(promptHtml + "\n含める問題の番号をスペース区切りで入力してください (例: 1 2 3)\n※すべて含める場合は「all」と入力", currentIds.length > 0 ? "current" : "all");
-  
-  if (selectedNumsStr === null) return;
-
-  let targetIds = currentIds;
-  if (selectedNumsStr.toLowerCase() === 'all') {
-    targetIds = allDocuments.map(d => d.id);
-  } else if (selectedNumsStr.toLowerCase() !== 'current') {
-    const nums = selectedNumsStr.split(/[\s,]+/).map(n => parseInt(n) - 1).filter(n => !isNaN(n));
-    targetIds = nums.map(idx => allDocuments[idx]?.id).filter(Boolean);
-  }
-
-  try {
-    const collId = collData ? collData.id : `coll_${Date.now()}`;
-    await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
-      name: collName,
-      documentIds: targetIds,
-      updatedAt: Date.now()
-    }, { merge: true });
-    alert("問題集を保存しました！");
-  } catch (err) {
-    alert("問題集の保存に失敗しました: " + err.message);
-  }
 }
 
-document.getElementById('create-collection-btn').addEventListener('click', () => openCollectionEditor());
+document.getElementById('close-coll-modal').addEventListener('click', () => {
+  document.getElementById('collection-edit-modal').classList.add('hidden');
+});
 
-// 問題集プレイ開始
+document.getElementById('create-collection-btn').addEventListener('click', () => {
+  if (!currentUser) return;
+  openCollectionEditorModal(null);
+});
+
+document.getElementById('save-coll-modal-btn').addEventListener('click', async () => {
+  const collId = document.getElementById('editing-coll-id').value || `coll_${Date.now()}`;
+  const collName = document.getElementById('coll-name-input').value.trim();
+
+  if (!collName) {
+    alert("問題集の名前を入力してください。");
+    return;
+  }
+
+  const checkboxes = document.querySelectorAll('.coll-prob-checkbox:checked');
+  const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+
+  try {
+    await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
+      name: collName,
+      documentIds: selectedIds,
+      updatedAt: Date.now()
+    }, { merge: true });
+
+    alert("問題集を保存しました！");
+    document.getElementById('collection-edit-modal').classList.add('hidden');
+  } catch (err) {
+    alert("保存に失敗しました: " + err.message);
+  }
+});
+
 function startCollectionPlay(collection, mode) {
   if (!collection.documentIds || collection.documentIds.length === 0) {
     alert("この問題集には問題が登録されていません。");
     return;
   }
 
-  // IDに一致する問題データを抽出
   let list = collection.documentIds.map(id => allDocuments.find(d => d.id === id)).filter(Boolean);
   if (list.length === 0) {
     alert("該当する有効な問題が見つかりませんでした。");
@@ -383,7 +412,6 @@ function startCollectionPlay(collection, mode) {
   }
 
   if (mode === 'random') {
-    // シャッフル
     list.sort(() => Math.random() - 0.5);
   }
 
@@ -399,7 +427,6 @@ function startCollectionPlay(collection, mode) {
   renderCollectionPlayerCurrent();
 }
 
-// 問題集プレイヤーの画面描画
 async function renderCollectionPlayerCurrent() {
   const container = document.getElementById('collection-player-content');
   container.innerHTML = '';
@@ -431,7 +458,6 @@ async function renderCollectionPlayerCurrent() {
   `;
   container.appendChild(headerDiv);
 
-  // 問題・解答表示エリア
   const splitDiv = document.createElement('div');
   splitDiv.className = "grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-y-auto pt-2";
   splitDiv.innerHTML = `
@@ -522,7 +548,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// 登録フォームの開閉とプレビュー機能
 document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm());
 document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
 
@@ -560,20 +585,101 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// ライブプレビューの更新
+// 登録時のライブプレビュー更新（テキスト＆ファイル即時レンダリング）
 async function updateLivePreviews() {
   const qText = document.getElementById('q-text-input').value;
   const aText = document.getElementById('a-text-input').value;
-  
-  const qPreview = document.getElementById('q-preview-area');
-  const aPreview = document.getElementById('a-preview-area');
+  const qFiles = document.getElementById('q-file-input').files;
+  const aFiles = document.getElementById('a-file-input').files;
 
-  qPreview.innerHTML = qText ? `<div class="content-text-box">${qText}</div>` : '<span class="text-gray-400">テキストなし</span>';
-  aPreview.innerHTML = aText ? `<div class="content-text-box">${aText}</div>` : '<span class="text-gray-400">テキストなし</span>';
+  await renderPreviewPane('q-preview-area', qText, qFiles);
+  await renderPreviewPane('a-preview-area', aText, aFiles);
 }
 
 document.getElementById('q-text-input').addEventListener('input', updateLivePreviews);
 document.getElementById('a-text-input').addEventListener('input', updateLivePreviews);
+document.getElementById('q-file-input').addEventListener('change', updateLivePreviews);
+document.getElementById('a-file-input').addEventListener('change', updateLivePreviews);
+
+async function renderPreviewPane(previewId, textVal, files) {
+  const area = document.getElementById(previewId);
+  area.innerHTML = '';
+
+  if (!textVal && (!files || files.length === 0)) {
+    area.innerHTML = '<span class="text-gray-400">プレビューなし</span>';
+    return;
+  }
+
+  if (textVal) {
+    const div = document.createElement('div');
+    div.className = "content-text-box mb-2";
+    div.innerText = textVal;
+    area.appendChild(div);
+  }
+
+  if (files && files.length > 0) {
+    try {
+      const tempMaterials = await processFiles(files);
+      for (let item of tempMaterials) {
+        const container = document.createElement('div');
+        container.className = "custom-content-viewer border rounded p-1 bg-white mb-2";
+        const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
+
+        if (item.type === 'docx') {
+          await docx.renderAsync(buffer, container, null, {
+            inWrapper: true,
+            ignoreWidth: true,
+            ignoreHeight: true,
+            renderChanges: false,
+            defaultFont: "MS Mincho"
+          });
+          fixWordListNumbers(container);
+        } else if (item.type === 'image') {
+          const blob = new Blob([buffer]);
+          const url = URL.createObjectURL(blob);
+          const img = document.createElement('img');
+          img.src = url;
+          img.className = "content-image";
+          container.appendChild(img);
+        } else if (item.type === 'pdf') {
+          const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const viewport = page.getViewport({ scale: 1.0 });
+            const canvas = document.createElement('canvas');
+            canvas.className = "pdf-page-canvas";
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            await page.render({ canvasContext: context, viewport: viewport }).promise;
+            container.appendChild(canvas);
+          }
+        }
+        area.appendChild(container);
+      }
+    } catch (e) {
+      area.innerHTML += `<p class="text-red-500 text-[10px]">プレビュー生成エラー: ${e.message}</p>`;
+    }
+  }
+}
+
+// Wordの自動連番ミスを修正するヘルパー関数
+function fixWordListNumbers(container) {
+  setTimeout(() => {
+    const textNodes = [];
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.nodeValue.trim().match(/^[(（]1[)）]|^1\./)) {
+        textNodes.push(node);
+      }
+    }
+    textNodes.forEach((node, index) => {
+      const num = index + 1;
+      node.nodeValue = node.nodeValue.replace(/^[(（]1[)）]/, `(${num})`).replace(/^1\./, `${num}.`);
+    });
+  }, 30);
+}
 
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
@@ -668,13 +774,13 @@ function updateModalStats() {
 document.getElementById('btn-record-correct').addEventListener('click', () => recordResult('correct'));
 document.getElementById('btn-record-incorrect').addEventListener('click', () => recordResult('incorrect'));
 
-// 正誤記録（誤答履歴にタイムスタンプを含める仕様）
+// 正誤記録（タイムスタンプ付き誤答履歴）
 async function recordResult(type) {
   if (!currentDocData || !currentUser) return;
   const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
   const history = currentDocData.history || [];
 
-  const timestamp = new Date().toISOString(); // 時刻を含める
+  const timestamp = new Date().toLocaleString('ja-JP');
 
   if (type === 'correct') {
     stats.correct++;
@@ -697,7 +803,6 @@ async function recordResult(type) {
   }
 }
 
-// レンダリング処理
 async function renderContent() {
   if (!currentDocData) return;
   await renderPaneContent('question-display-area', currentDocData.questionText, currentDocData.questionMaterials);
@@ -715,7 +820,7 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
 
   if (textVal) {
     const textDiv = document.createElement('div');
-    textDiv.className = "content-text-box"; // 白背景・明朝体スタイル適用
+    textDiv.className = "content-text-box";
     textDiv.innerText = textVal;
     displayArea.appendChild(textDiv);
   }
@@ -736,22 +841,7 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
             renderChanges: false,
             defaultFont: "MS Mincho"
           });
-
-          setTimeout(() => {
-            const textNodes = [];
-            const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-            let node;
-            while (node = walker.nextNode()) {
-              if (node.nodeValue.trim().match(/^[(（]1[)）]|^1\./)) {
-                textNodes.push(node);
-              }
-            }
-            textNodes.forEach((node, index) => {
-              const num = index + 1;
-              node.nodeValue = node.nodeValue.replace(/^[(（]1[)）]/, `(${num})`).replace(/^1\./, `${num}.`);
-            });
-          }, 50);
-
+          fixWordListNumbers(container);
         } else if (item.type === 'image') {
           const blob = new Blob([buffer]);
           const url = URL.createObjectURL(blob);
