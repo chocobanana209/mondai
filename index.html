@@ -18,7 +18,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
 
-  <!-- HEIC-to-JPEG Library (iPhone等のHEIC画像変換用) -->
+  <!-- HEIC-to-JPEG Library -->
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
   <!-- LZ-String Library -->
@@ -33,7 +33,7 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-20">
     <div class="max-w-full mx-auto px-4 py-2.5 flex justify-between items-center">
       <div class="flex items-center space-x-3">
-        <button id="toggle-sidebar-btn" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 focus:outline-none">
+        <button id="toggle-sidebar-btn" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 focus:outline-none" title="サイドバー切替">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
           </svg>
@@ -52,6 +52,15 @@
           <img id="user-photo" src="" class="w-7 h-7 rounded-full border border-gray-300" alt="Avatar">
           <span id="user-name" class="text-xs font-medium text-gray-700 hidden sm:inline"></span>
         </div>
+        
+        <!-- 画面右上の ≡ マークボタン (正誤記録メニュー用) -->
+        <button id="header-menu-btn" class="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 text-xs font-bold" title="正誤記録・メニュー">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+          <span class="hidden sm:inline">正誤記録</span>
+        </button>
+
         <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition">
           Googleログイン
         </button>
@@ -86,17 +95,6 @@
       </div>
 
       <div id="sidebar-list" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
-
-      <div id="sidebar-stats-card" class="hidden p-3 bg-slate-50 border-t border-slate-200 space-y-2">
-        <div class="text-xs font-bold text-slate-700 truncate" id="sidebar-target-title">未選択</div>
-        <div class="flex items-center justify-between text-xs text-gray-600">
-          <span>成績: <strong class="text-green-600" id="stat-correct">0</strong> 勝 <strong class="text-red-600" id="stat-incorrect">0</strong> 敗</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <button id="btn-record-correct" class="bg-green-600 hover:bg-green-700 text-white py-1.5 rounded text-xs font-bold transition shadow-xs">○ 正解</button>
-          <button id="btn-record-incorrect" class="bg-red-600 hover:bg-red-700 text-white py-1.5 rounded text-xs font-bold transition shadow-xs">× 誤答</button>
-        </div>
-      </div>
     </aside>
 
     <!-- メイン表示領域 -->
@@ -141,19 +139,19 @@
         </div>
 
         <div class="border p-3 rounded-lg bg-slate-50 space-y-3">
-          <h3 class="text-xs font-bold text-slate-700">【問題データ】追加素材</h3>
+          <h3 class="text-xs font-bold text-slate-700">【問題データ】 (テキストまたはファイルどちらか、あるいは両方)</h3>
           <div>
-            <label class="block text-[11px] text-gray-600 mb-1">テキスト文面</label>
+            <label class="block text-[11px] text-gray-600 mb-1">テキスト文面 (空でも可)</label>
             <textarea id="q-text-input" rows="3" placeholder="問題文を入力..." class="w-full text-xs border border-slate-300 rounded p-2 focus:outline-none focus:border-blue-500"></textarea>
           </div>
           <div>
-            <label class="block text-[11px] text-gray-600 mb-1">添付ファイル (Word / PDF / 画像 ※HEICも自動変換)</label>
+            <label class="block text-[11px] text-gray-600 mb-1">添付ファイル (Word / PDF / 画像)</label>
             <input type="file" id="q-file-input" accept=".docx,.pdf,image/*,.heic,.HEIC" multiple class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
           </div>
         </div>
 
         <div class="border p-3 rounded-lg bg-slate-50 space-y-3">
-          <h3 class="text-xs font-bold text-slate-700">【解答解説データ】追加素材 (任意)</h3>
+          <h3 class="text-xs font-bold text-slate-700">【解答解説データ】 (任意)</h3>
           <div>
             <label class="block text-[11px] text-gray-600 mb-1">解答テキスト文面</label>
             <textarea id="a-text-input" rows="3" placeholder="解答や解説を入力..." class="w-full text-xs border border-slate-300 rounded p-2 focus:outline-none focus:border-blue-500"></textarea>
@@ -171,6 +169,27 @@
 
     </main>
 
+  </div>
+
+  <!-- 正誤記録モーダル (画面右上の ≡ ボタンから表示) -->
+  <div id="stats-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-sm w-full p-5 space-y-4">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-slate-800 text-sm">正誤記録・成績管理</h3>
+        <button id="close-stats-modal" class="text-gray-400 hover:text-gray-600 text-sm font-bold">✕</button>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-600 mb-1" id="modal-target-title">問題が選択されていません</div>
+        <div class="flex items-center justify-between text-xs text-gray-700 bg-slate-50 p-3 rounded-lg border">
+          <span>正解数: <strong class="text-green-600 text-sm" id="stat-correct">0</strong> 勝</span>
+          <span>誤答数: <strong class="text-red-600 text-sm" id="stat-incorrect">0</strong> 敗</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button id="btn-record-correct" class="bg-green-600 hover:bg-green-700 text-white py-2 rounded text-xs font-bold transition shadow-xs">○ 正解</button>
+        <button id="btn-record-incorrect" class="bg-red-600 hover:bg-red-700 text-white py-2 rounded text-xs font-bold transition shadow-xs">× 誤答</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="script.js"></script>
