@@ -53,7 +53,7 @@
           <span id="user-name" class="text-xs font-medium text-gray-700 hidden sm:inline"></span>
         </div>
         
-        <!-- 画面右上の ≡ マークボタン (正誤記録メニュー用) -->
+        <!-- 正誤記録メニュー用ボタン -->
         <button id="header-menu-btn" class="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1 text-xs font-bold" title="正誤記録・メニュー">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
@@ -100,23 +100,28 @@
     <!-- メイン表示領域 -->
     <main id="main-content" class="flex-1 bg-slate-50 flex flex-col overflow-y-auto p-4 opacity-50 pointer-events-none transition-opacity">
       
-      <!-- 閲覧ビュー (問題 & 解答解説の二分割レイアウト) -->
+      <!-- 閲覧ビュー -->
       <div id="view-mode-container" class="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         
-        <!-- 上部バー（タイトルと編集ボタン） -->
-        <div class="border-b border-slate-200 px-4 py-3 bg-slate-50 flex justify-between items-center">
+        <!-- 上部バー（タイトル・編集ボタン・解答表示切り替えボタン） -->
+        <div class="border-b border-slate-200 px-4 py-3 bg-slate-50 flex justify-between items-center flex-wrap gap-2">
           <div class="flex items-center gap-3">
             <h2 id="doc-title" class="font-bold text-slate-800 text-base truncate">左のリストから問題を選択してください</h2>
             <button id="edit-current-btn" class="hidden text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded">編集する</button>
           </div>
+          
+          <!-- 解答解説をボタンで呼び出すハイブリッドコントロール -->
+          <button id="toggle-answer-pane-btn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-xs flex items-center gap-1">
+            <span>💡 解答解説を表示</span>
+          </button>
         </div>
 
-        <!-- 左右二分割ペイン -->
-        <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200 overflow-hidden">
+        <!-- 左右二分割ペイン（初期状態は問題ペインがフル幅、解答ペインは非表示） -->
+        <div id="content-split-wrapper" class="flex-1 flex overflow-hidden">
           
-          <!-- 左ペイン：問題 -->
-          <div class="flex flex-col h-full overflow-hidden bg-white">
-            <div class="bg-blue-50 px-4 py-2 border-b border-blue-100 text-xs font-bold text-blue-800 flex items-center gap-1">
+          <!-- 左ペイン：問題（常に表示） -->
+          <div id="question-pane" class="flex-1 flex flex-col h-full overflow-hidden bg-white">
+            <div class="bg-blue-50 px-4 py-2 border-b border-blue-100 text-xs font-bold text-blue-800 flex items-center justify-between">
               <span>📝 問題</span>
             </div>
             <div id="question-display-area" class="flex-1 p-4 overflow-y-auto space-y-4">
@@ -124,10 +129,11 @@
             </div>
           </div>
 
-          <!-- 右ペイン：解答解説 -->
-          <div class="flex flex-col h-full overflow-hidden bg-white">
-            <div class="bg-emerald-50 px-4 py-2 border-b border-emerald-100 text-xs font-bold text-emerald-800 flex items-center gap-1">
+          <!-- 右ペイン：解答解説（ボタンで開閉するハイブリッド仕様） -->
+          <div id="answer-pane" class="w-1/2 flex flex-col h-full overflow-hidden bg-white border-l border-slate-200 hidden">
+            <div class="bg-emerald-50 px-4 py-2 border-b border-emerald-100 text-xs font-bold text-emerald-800 flex items-center justify-between">
               <span>💡 解答解説</span>
+              <button id="close-answer-pane-btn" class="text-emerald-700 hover:text-emerald-900 font-bold px-1 text-sm">✕ 閉じる</button>
             </div>
             <div id="answer-display-area" class="flex-1 p-4 overflow-y-auto space-y-4">
               <div class="text-center text-gray-400 py-20"><p>解答解説はここに表示されます。</p></div>
