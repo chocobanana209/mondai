@@ -16,7 +16,8 @@ import {
   query, 
   orderBy, 
   onSnapshot,
-  deleteDoc
+  deleteDoc,
+  enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -42,6 +43,16 @@ try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+
+  // オフラインキャッシュの有効化（接続が一時的に不安定でもエラーで止めない処理）
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn("複数のタブでアプリが開かれているため、キャッシュは1つのタブでのみ無効化されました。");
+    } else if (err.code === 'unimplemented') {
+      console.warn("お使いのブラウザはオフラインキャッシュに対応していません。");
+    }
+  });
+
   setPersistence(auth, browserLocalPersistence).catch(err => {
     console.error("セッション永続化エラー:", err);
   });
@@ -109,7 +120,6 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
 
-// 右上の ≡ ボタン (正誤記録メニュー) モダンの開閉制御
 document.getElementById('header-menu-btn').addEventListener('click', () => {
   if (!currentDocData) {
     alert("まず左のリストから問題を選択してください。");
@@ -269,7 +279,6 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
-// ファイル処理・詳細エラー説明機能付き
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
@@ -332,7 +341,6 @@ async function processFiles(fileList) {
       });
     } catch (err) {
       console.error("ファイル処理エラー詳細:", err);
-      // 詳細な理由をユーザーにスローして通知
       throw new Error(`[読み込み失敗] ${err.message}`);
     }
   }
@@ -386,7 +394,6 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理（テキストなし・添付ファイルのみ、またはその逆も完全許可）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -400,7 +407,6 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   const qFiles = document.getElementById('q-file-input').files;
   const aFiles = document.getElementById('a-file-input').files;
 
-  // タイトル、問題テキスト、問題ファイルのいずれもない場合は弾く
   if (!title && !qText && (!qFiles || qFiles.length === 0)) {
     alert("タイトル、または問題文・添付ファイルのいずれかを入力・選択してください。");
     return;
