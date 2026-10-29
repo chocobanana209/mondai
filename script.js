@@ -19,7 +19,6 @@ import {
   deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// Firebase設定
 const firebaseConfig = {
   apiKey: "AIzaSyAat1qoigRFAQtIwCHweMeO6P0qTmR10_8",
   authDomain: "mondai-choco.firebaseapp.com",
@@ -50,7 +49,6 @@ try {
   console.error("Firebase初期化失敗:", e);
 }
 
-// 認証状態の監視
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   updateAuthUI(user);
@@ -111,7 +109,6 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
 
-// リアルタイムデータ同期
 function setupRealtimeListeners() {
   detachRealtimeListeners();
   if (!currentUser) return;
@@ -122,7 +119,6 @@ function setupRealtimeListeners() {
     snapshot.forEach(d => allDocuments.push({ id: d.id, ...d.data() }));
     renderCurrentView();
     
-    // 選択中のドキュメントデータが更新された場合にビューを保持
     if (selectedDocId) {
       const updated = allDocuments.find(d => d.id === selectedDocId);
       if (updated) {
@@ -259,23 +255,52 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
+// ファイル処理・HEIC自動JPEG変換機能
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
 
   for (let file of fileList) {
     if (!file) continue;
-    const buffer = await file.arrayBuffer();
+
+    let targetFile = file;
+    let fileName = file.name;
+    let type = 'raw';
+
+    // HEIC画像形式の検出・JPEGへの変換処理
+    const isHeic = file.name.match(/\.heic$/i) || file.type === 'image/heic' || file.type === 'image/heif';
+    if (isHeic && typeof heic2any !== 'undefined') {
+      try {
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.8
+        });
+        targetFile = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
+      } catch (e) {
+        console.error("HEIC変換エラー:", e);
+      }
+    }
+
+    const buffer = await targetFile.arrayBuffer();
     const base64 = await arrayBufferToBase64(buffer);
     const compressed = LZString.compressToUTF16(base64);
 
-    let type = 'raw';
-    if (file.name.match(/\.docx$/i)) type = 'docx';
-    else if (file.name.match(/\.pdf$/i)) type = 'pdf';
-    else if (file.type.startsWith('image/')) type = 'image';
+    if (fileName.match(/\.docx$/i)) {
+      type = 'docx';
+    } else if (fileName.match(/\.pdf$/i)) {
+      type = 'pdf';
+    } else if (targetFile.type.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|webp)$/i)) {
+      type = 'image';
+      // 拡張子がjpgになっていない場合は強制的に.jpgに変更
+      if (!fileName.match(/\.jpe?g$/i)) {
+        fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
+      }
+    }
 
     materials.push({
-      fileName: file.name,
+      fileName: fileName,
       type: type,
       data: compressed
     });
@@ -330,7 +355,6 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理（安定化版）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -361,7 +385,7 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       tags: tags,
       questionText: document.getElementById('q-text-input').value,
       answerText: document.getElementById('a-text-input').value,
-      updatedAt: Date.now() // サーバー時刻のズレによる再描画バグを防止
+      updatedAt: Date.now()
     };
 
     if (qMaterials.length > 0) {
@@ -456,7 +480,7 @@ function updateTabStyle() {
     qTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
     aTab.className = "px-3 py-1 font-medium text-gray-500 hover:text-gray-700 text-xs focus:outline-none";
   } else {
-    aTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
+    qTab.className = "px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 text-xs focus:outline-none";
     qTab.className = "px-3 py-1 font-medium text-gray-500 hover:text-gray-700 text-xs focus:outline-none";
   }
 }
