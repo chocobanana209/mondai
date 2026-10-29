@@ -42,7 +42,6 @@ let collectionPlayIndex = 0;
 let unsubscribeDocs = null;
 let unsubscribeCollections = null;
 
-// 正誤記録モーダル内の各小問に対する一時選択状態 { "小問名": "correct" | "incorrect" | null }
 let pendingSubResults = {};
 
 try {
@@ -137,6 +136,7 @@ document.getElementById('close-stats-modal').addEventListener('click', () => {
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
+// 単体問題用解答解説ペインのトグル
 const answerPane = document.getElementById('answer-pane');
 const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
 const closeAnswerBtn = document.getElementById('close-answer-pane-btn');
@@ -149,6 +149,21 @@ toggleAnswerBtn.addEventListener('click', () => {
 closeAnswerBtn.addEventListener('click', () => {
   answerPane.classList.add('hidden');
   toggleAnswerBtn.innerText = "💡 解答解説を表示";
+});
+
+// 問題集プレイ用解答解説ペインのトグル
+const collAnswerPane = document.getElementById('coll-answer-pane');
+const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
+const closeCollAnswerBtn = document.getElementById('close-coll-answer-pane-btn');
+
+toggleCollAnswerBtn.addEventListener('click', () => {
+  collAnswerPane.classList.toggle('hidden');
+  toggleCollAnswerBtn.innerText = collAnswerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
+});
+
+closeCollAnswerBtn.addEventListener('click', () => {
+  collAnswerPane.classList.add('hidden');
+  toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
 function setupRealtimeListeners() {
@@ -272,10 +287,78 @@ function renderDocumentList(docs) {
   });
 }
 
+// 誤答整理ロジックに基づく問題リスト生成ヘルパー
+function getMistakeReviewList() {
+  // 1. 各問題の「最後の履歴」または「過去の誤答有無」を分析
+  let incorrectLast = []; // 最終解答が誤答のもの
+  let onceIncorrectNowCorrect = []; // 最終解答は正答だが過去に間違えたもの
+
+  allDocuments.forEach(doc => {
+    const history = doc.history || [];
+    if (history.length === 0) return;
+
+    // 最新の履歴を取得
+    const lastEntry = history[history.length - 1];
+    const hasIncorrect = history.some(h => h.type === 'incorrect');
+
+    if (lastEntry.type === 'incorrect') {
+      // 最終解答が誤答
+      // 最後の誤答の日時(timestamp)を取得 (古い順に並べるための値)
+      const lastIncorrectTime = new Date(lastEntry.timestamp || 0).getTime();
+      incorrectLast.push({ doc, time: lastIncorrectTime });
+    } else if (lastEntry.type === 'correct' && hasIncorrect) {
+      // 最終解答は正答だが過去に間違いがある
+      // 最後の正解の日時 (新しい順に並べるための値)
+      const lastCorrectTime = new Date(lastEntry.timestamp || 0).getTime();
+      onceIncorrectNowCorrect.push({ doc, time: lastCorrectTime });
+    }
+  });
+
+  // ルール適用
+  // ① 最終解答が誤答のものを古い順 (昇順)
+  incorrectLast.sort((a, b) => a.time - b.time);
+
+  // ② 最終解答は正答でも過去間違えた問題を最終解答が新しい順 (降順)
+  onceIncorrectNowCorrect.sort((a, b) => b.time - a.time);
+
+  return [...incorrectLast.map(item => item.doc), ...onceIncorrectNowCorrect.map(item => item.doc)];
+}
+
 function renderCollectionList(colls) {
   const container = document.getElementById('sidebar-list');
-  container.innerHTML = colls.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
+  container.innerHTML = '';
 
+  // 1. 【誤答整理】を常に一番上に固定表示
+  const mistakeList = getMistakeReviewList();
+  const mistakeCard = document.createElement('div');
+  mistakeCard.className = 'p-3 rounded-lg border bg-amber-50 hover:bg-amber-100 border-amber-300 cursor-pointer text-xs transition space-y-2 shadow-xs';
+  mistakeCard.innerHTML = `
+    <div class="flex justify-between items-center">
+      <span class="font-bold text-amber-900 text-sm flex items-center gap-1">
+        <span>🔥 誤答整理</span>
+      </span>
+      <span class="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-bold">自動生成</span>
+    </div>
+    <div class="text-[10px] text-amber-700">復習対象問題: ${mistakeList.length} 問</div>
+    <div class="flex gap-1 pt-1">
+      <button class="play-mistake-seq flex-1 bg-amber-600 hover:bg-amber-700 text-white py-1 rounded font-bold">順番に出題</button>
+      <button class="play-mistake-rnd flex-1 bg-orange-600 hover:bg-orange-700 text-white py-1 rounded font-bold">ランダム出題</button>
+    </div>
+  `;
+
+  mistakeCard.querySelector('.play-mistake-seq').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startCustomCollectionPlay({ name: "誤答整理", documentIds: mistakeList.map(d => d.id) }, 'sequential');
+  });
+
+  mistakeCard.querySelector('.play-mistake-rnd').addEventListener('click', (e) => {
+    e.stopPropagation();
+    startCustomCollectionPlay({ name: "誤答整理", documentIds: mistakeList.map(d => d.id) }, 'random');
+  });
+
+  container.appendChild(mistakeCard);
+
+  // 2. 通常の問題集リスト
   colls.forEach(c => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition space-y-2';
@@ -409,8 +492,13 @@ function startCollectionPlay(collection, mode) {
   }
 
   let list = collection.documentIds.map(id => allDocuments.find(d => d.id === id)).filter(Boolean);
+  startCustomCollectionPlay({ name: collection.name, documentIds: list.map(d => d.id) }, mode);
+}
+
+function startCustomCollectionPlay(collection, mode) {
+  let list = collection.documentIds.map(id => allDocuments.find(d => d.id === id)).filter(Boolean);
   if (list.length === 0) {
-    alert("該当する有効な問題が見つかりませんでした。");
+    alert("対象となる問題がありません。");
     return;
   }
 
@@ -431,11 +519,13 @@ function startCollectionPlay(collection, mode) {
 }
 
 async function renderCollectionPlayerCurrent() {
-  const container = document.getElementById('collection-player-content');
-  container.innerHTML = '';
+  const qContainer = document.getElementById('coll-q-display-area');
+  const aContainer = document.getElementById('coll-a-display-area');
+  qContainer.innerHTML = '';
+  aContainer.innerHTML = '';
 
   if (collectionPlayIndex >= collectionPlayList.length) {
-    container.innerHTML = `
+    document.getElementById('collection-player-content').innerHTML = `
       <div class="text-center py-20 space-y-4">
         <h3 class="text-lg font-bold text-slate-800">🎉 問題集をすべてクリアしました！</h3>
         <button id="restart-coll-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-bold">最初からやり直す</button>
@@ -452,31 +542,27 @@ async function renderCollectionPlayerCurrent() {
   selectedDocId = docData.id;
   currentDocData = docData;
 
-  const headerDiv = document.createElement('div');
-  headerDiv.className = "flex justify-between items-center border-b pb-2 text-xs font-bold text-slate-700";
-  headerDiv.innerHTML = `
-    <span>進捗: ${collectionPlayIndex + 1} / ${collectionPlayList.length} 問目</span>
-    <span>${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}</span>
-    <button id="next-coll-item-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">次の問題へ ➡</button>
-  `;
-  container.appendChild(headerDiv);
+  document.getElementById('coll-progress-badge').innerText = `${collectionPlayIndex + 1} / ${collectionPlayList.length}`;
 
-  const splitDiv = document.createElement('div');
-  splitDiv.className = "grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-y-auto pt-2";
-  splitDiv.innerHTML = `
-    <div id="play-q-area" class="border rounded-lg p-3 bg-white space-y-2 overflow-y-auto max-h-[500px]"></div>
-    <div id="play-a-area" class="border rounded-lg p-3 bg-white space-y-2 overflow-y-auto max-h-[500px]"></div>
-  `;
-  container.appendChild(splitDiv);
+  // 解答解説の有無チェック
+  const hasAnswer = docData.answerText || (docData.answerMaterials && docData.answerMaterials.length > 0);
+  if (hasAnswer) {
+    toggleCollAnswerBtn.classList.remove('hidden');
+  } else {
+    toggleCollAnswerBtn.classList.add('hidden');
+    collAnswerPane.classList.add('hidden');
+  }
+  collAnswerPane.classList.add('hidden');
+  toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
 
-  document.getElementById('next-coll-item-btn').addEventListener('click', () => {
-    collectionPlayIndex++;
-    renderCollectionPlayerCurrent();
-  });
-
-  await renderPaneContent('play-q-area', docData.questionText, docData.questionMaterials);
-  await renderPaneContent('play-a-area', docData.answerText, docData.answerMaterials, "解答解説はありません。");
+  await renderPaneContentForContainer(qContainer, docData.questionText, docData.questionMaterials);
+  await renderPaneContentForContainer(aContainer, docData.answerText, docData.answerMaterials, "解答解説はありません。");
 }
+
+document.getElementById('coll-next-btn').addEventListener('click', () => {
+  collectionPlayIndex++;
+  renderCollectionPlayerCurrent();
+});
 
 document.getElementById('exit-collection-btn').addEventListener('click', () => {
   document.getElementById('collection-player-container').classList.add('hidden');
@@ -764,7 +850,6 @@ document.getElementById('edit-current-btn').addEventListener('click', () => {
   if (currentDocData) openRegisterForm(currentDocData);
 });
 
-// 正誤モーダルの表示と小問ごとの判定ボタンUI生成
 function updateModalStats() {
   if (!currentDocData) return;
   
@@ -774,7 +859,6 @@ function updateModalStats() {
   container.innerHTML = '';
   pendingSubResults = {};
 
-  // カンマ区切りの小問リストの解析
   const subList = currentDocData.subQuestion 
     ? currentDocData.subQuestion.split(/[,、]/).map(s => s.trim()).filter(Boolean)
     : ["全体"];
@@ -782,7 +866,7 @@ function updateModalStats() {
   const subStatsMap = currentDocData.subStats || {};
 
   subList.forEach(subKey => {
-    pendingSubResults[subKey] = null; // 一時選択状態を初期化
+    pendingSubResults[subKey] = null;
 
     const currentSubStat = subStatsMap[subKey] || { correct: 0, incorrect: 0 };
 
@@ -800,14 +884,12 @@ function updateModalStats() {
       </div>
     `;
 
-    // ○ ボタンクリック時のイベント
-    itemDiv.querySelector('.sub-btn-correct').addEventListener('click', (e) => {
+    itemDiv.querySelector('.sub-btn-correct').addEventListener('click', () => {
       pendingSubResults[subKey] = pendingSubResults[subKey] === 'correct' ? null : 'correct';
       updateSubButtonsUI(itemDiv, subKey);
     });
 
-    // × ボタンクリック時のイベント
-    itemDiv.querySelector('.sub-btn-incorrect').addEventListener('click', (e) => {
+    itemDiv.querySelector('.sub-btn-incorrect').addEventListener('click', () => {
       pendingSubResults[subKey] = pendingSubResults[subKey] === 'incorrect' ? null : 'incorrect';
       updateSubButtonsUI(itemDiv, subKey);
     });
@@ -816,7 +898,6 @@ function updateModalStats() {
   });
 }
 
-// 選択状態に応じたボタンのアクティブ表示切替
 function updateSubButtonsUI(parentDiv, subKey) {
   const btnCorrect = parentDiv.querySelector('.sub-btn-correct');
   const btnIncorrect = parentDiv.querySelector('.sub-btn-incorrect');
@@ -829,14 +910,13 @@ function updateSubButtonsUI(parentDiv, subKey) {
     (state === 'incorrect' ? "bg-red-600 text-white border-red-600 ring-2 ring-red-300" : "border-red-600 text-red-700 hover:bg-red-50");
 }
 
-// 「決定する」ボタンの処理（各小問の判定を一括で保存）
 document.getElementById('btn-record-commit').addEventListener('click', async () => {
   if (!currentDocData || !currentUser) return;
 
   const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
   const subStatsMap = currentDocData.subStats || {};
   const history = currentDocData.history || [];
-  const timestamp = new Date().toLocaleString('ja-JP');
+  const timestamp = new Date().toISOString(); // 正確な時系列比較用
 
   let updated = false;
 
@@ -851,6 +931,7 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
     if (type === 'correct') {
       stats.correct++;
       subStatsMap[subKey].correct++;
+      history.push({ subQuestion: subKey, type: 'correct', timestamp: timestamp });
     } else if (type === 'incorrect') {
       stats.incorrect++;
       subStatsMap[subKey].incorrect++;
@@ -888,8 +969,7 @@ async function renderContent() {
   await renderPaneContent('answer-display-area', currentDocData.answerText, currentDocData.answerMaterials, "解答解説は登録されていません。");
 }
 
-async function renderPaneContent(containerId, textVal, materials, emptyMsg = "データはありません。") {
-  const displayArea = document.getElementById(containerId);
+async function renderPaneContentForContainer(displayArea, textVal, materials, emptyMsg = "データはありません。") {
   displayArea.innerHTML = '';
 
   if (!textVal && (!materials || materials.length === 0)) {
@@ -950,6 +1030,11 @@ async function renderPaneContent(containerId, textVal, materials, emptyMsg = "�
       displayArea.appendChild(container);
     }
   }
+}
+
+async function renderPaneContent(containerId, textVal, materials, emptyMsg = "データはありません。") {
+  const displayArea = document.getElementById(containerId);
+  await renderPaneContentForContainer(displayArea, textVal, materials, emptyMsg);
 }
 
 function clearDocumentView() {
