@@ -44,9 +44,11 @@ let unsubscribeCollections = null;
 
 let pendingSubResults = {};
 
-// 登録・編集フォーム内で保持するアタッチメント配列（個別追加・削除対応）
 let currentFormQMaterials = [];
 let currentFormAMaterials = [];
+
+// 問題集モーダルで順序を保持する配列
+let editingCollectionOrder = [];
 
 try {
   app = initializeApp(firebaseConfig);
@@ -140,7 +142,6 @@ document.getElementById('close-stats-modal').addEventListener('click', () => {
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// 単体問題用解答解説ペインのトグル
 const answerPane = document.getElementById('answer-pane');
 const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
 const closeAnswerBtn = document.getElementById('close-answer-pane-btn');
@@ -155,7 +156,6 @@ closeAnswerBtn.addEventListener('click', () => {
   toggleAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
-// 問題集プレイ用解答解説ペインのトグル
 const collAnswerPane = document.getElementById('coll-answer-pane');
 const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
 const closeCollAnswerBtn = document.getElementById('close-coll-answer-pane-btn');
@@ -401,44 +401,92 @@ function renderCollectionList(colls) {
   });
 }
 
+// 問題順序入れ替え対応の問題集編集モーダルオープン
 function openCollectionEditorModal(collData = null) {
   const modal = document.getElementById('collection-edit-modal');
   const titleEl = document.getElementById('coll-modal-title');
   const idEl = document.getElementById('editing-coll-id');
   const nameEl = document.getElementById('coll-name-input');
-  const checkboxListEl = document.getElementById('coll-problems-checkbox-list');
 
   modal.classList.remove('hidden');
-  checkboxListEl.innerHTML = '';
 
   if (collData) {
     titleEl.innerText = "問題集の編集";
     idEl.value = collData.id;
     nameEl.value = collData.name;
+    
+    // 既存のID配列から全問題リストを初期化（登録されていない問題も末尾に配置）
+    const existingIds = collData.documentIds || [];
+    const notIncluded = allDocuments.filter(d => !existingIds.includes(d.id)).map(d => d.id);
+    editingCollectionOrder = [...existingIds, ...notIncluded];
   } else {
     titleEl.innerText = "新しい問題集の作成";
     idEl.value = '';
     nameEl.value = '';
+    editingCollectionOrder = allDocuments.map(d => d.id);
   }
 
-  const currentIds = collData && collData.documentIds ? collData.documentIds : [];
+  renderCollectionProblemsList(collData ? (collData.documentIds || []) : []);
+}
+
+// 順序入れ替えUI付きの問題リストレンダリング
+function renderCollectionProblemsList(selectedIds) {
+  const checkboxListEl = document.getElementById('coll-problems-checkbox-list');
+  checkboxListEl.innerHTML = '';
 
   if (allDocuments.length === 0) {
     checkboxListEl.innerHTML = '<p class="text-gray-400 text-xs">登録されている問題がありません。</p>';
     return;
   }
 
-  allDocuments.forEach(doc => {
-    const isChecked = currentIds.includes(doc.id) ? 'checked' : '';
-    const div = document.createElement('label');
-    div.className = "flex items-center gap-2 p-1 hover:bg-slate-100 rounded cursor-pointer text-xs";
-    div.innerHTML = `
-      <input type="checkbox" value="${doc.id}" ${isChecked} class="coll-prob-checkbox rounded text-blue-600 focus:ring-0">
-      <span class="truncate flex-1">${doc.title} ${doc.subQuestion ? '('+doc.subQuestion+')' : ''}</span>
-      <span class="text-[10px] text-gray-400">${doc.subject || ''}</span>
+  editingCollectionOrder.forEach((docId, index) => {
+    const docData = allDocuments.find(d => d.id === docId);
+    if (!docData) return;
+
+    const isChecked = selectedIds.includes(docId) ? 'checked' : '';
+
+    const itemDiv = document.createElement('div');
+    itemDiv.className = "flex items-center gap-1.5 p-1.5 bg-white border rounded shadow-2xs hover:bg-slate-50 text-xs";
+    
+    itemDiv.innerHTML = `
+      <input type="checkbox" value="${docData.id}" ${isChecked} class="coll-prob-checkbox rounded text-blue-600 focus:ring-0">
+      <span class="truncate flex-1 font-medium text-slate-800">${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}</span>
+      <div class="flex gap-0.5">
+        <button type="button" class="btn-move-up p-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded font-bold" title="上へ移動">▲</button>
+        <button type="button" class="btn-move-down p-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 rounded font-bold" title="下へ移動">▼</button>
+      </div>
     `;
-    checkboxListEl.appendChild(div);
+
+    // 順序の「上へ移動」
+    itemDiv.querySelector('.btn-move-up').addEventListener('click', () => {
+      if (index > 0) {
+        const currentCheckState = getCurrentlyCheckedIds();
+        const temp = editingCollectionOrder[index];
+        editingCollectionOrder[index] = editingCollectionOrder[index - 1];
+        editingCollectionOrder[index - 1] = temp;
+        renderCollectionProblemsList(currentCheckState);
+      }
+    });
+
+    // 順序の「下へ移動」
+    itemDiv.querySelector('.btn-move-down').addEventListener('click', () => {
+      if (index < editingCollectionOrder.length - 1) {
+        const currentCheckState = getCurrentlyCheckedIds();
+        const temp = editingCollectionOrder[index];
+        editingCollectionOrder[index] = editingCollectionOrder[index + 1];
+        editingCollectionOrder[index + 1] = temp;
+        renderCollectionProblemsList(currentCheckState);
+      }
+    });
+
+    checkboxListEl.appendChild(itemDiv);
   });
+}
+
+// 現在チェックが入っているID一覧を取得するヘルパー
+function getCurrentlyCheckedIds() {
+  const checkboxes = document.querySelectorAll('.coll-prob-checkbox:checked');
+  return Array.from(checkboxes).map(cb => cb.value);
 }
 
 document.getElementById('close-coll-modal').addEventListener('click', () => {
@@ -450,6 +498,7 @@ document.getElementById('create-collection-btn').addEventListener('click', () =>
   openCollectionEditorModal(null);
 });
 
+// 問題集の保存処理（規定順序をそのまま保持）
 document.getElementById('save-coll-modal-btn').addEventListener('click', async () => {
   const collId = document.getElementById('editing-coll-id').value || `coll_${Date.now()}`;
   const collName = document.getElementById('coll-name-input').value.trim();
@@ -459,13 +508,14 @@ document.getElementById('save-coll-modal-btn').addEventListener('click', async (
     return;
   }
 
-  const checkboxes = document.querySelectorAll('.coll-prob-checkbox:checked');
-  const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+  const selectedSet = new Set(getCurrentlyCheckedIds());
+  // 並び順（editingCollectionOrder）の中からチェックされた問題のみを順番どおり抽出
+  const orderedSelectedIds = editingCollectionOrder.filter(id => selectedSet.has(id));
 
   try {
     await setDoc(doc(db, "users", currentUser.uid, "collections", collId), {
       name: collName,
-      documentIds: selectedIds,
+      documentIds: orderedSelectedIds,
       updatedAt: Date.now()
     }, { merge: true });
 
@@ -629,7 +679,6 @@ function base64ToArrayBuffer(base64) {
 document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm(null));
 document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
 
-// 💡 修正: 新規登録時は必ず空のIDを発番し、既存データの混同（迷子）を防止
 function openRegisterForm(docData = null) {
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.add('hidden');
@@ -650,7 +699,7 @@ function openRegisterForm(docData = null) {
     currentFormAMaterials = docData.answerMaterials ? [...docData.answerMaterials] : [];
   } else {
     document.getElementById('form-header-title').innerText = "新しい問題データの登録";
-    document.getElementById('editing-doc-id').value = ''; // 空にして新規ID発番を強制
+    document.getElementById('editing-doc-id').value = '';
     document.getElementById('problem-name-input').value = '';
     document.getElementById('subquestion-input').value = '';
     document.getElementById('subject-input').value = '';
@@ -663,7 +712,6 @@ function openRegisterForm(docData = null) {
     currentFormAMaterials = [];
   }
   
-  // ファイル選択inputをクリア
   document.getElementById('q-file-input').value = '';
   document.getElementById('a-file-input').value = '';
 
@@ -675,14 +723,13 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// ファイル追加イベント
 document.getElementById('q-file-input').addEventListener('change', async (e) => {
   const files = e.target.files;
   if (files && files.length > 0) {
     try {
       const newMats = await processFiles(files);
       currentFormQMaterials.push(...newMats);
-      document.getElementById('q-file-input').value = ''; // リセット
+      document.getElementById('q-file-input').value = '';
       await updateLivePreviews();
     } catch (err) {
       alert(err.message);
@@ -696,7 +743,7 @@ document.getElementById('a-file-input').addEventListener('change', async (e) => 
     try {
       const newMats = await processFiles(files);
       currentFormAMaterials.push(...newMats);
-      document.getElementById('a-file-input').value = ''; // リセット
+      document.getElementById('a-file-input').value = '';
       await updateLivePreviews();
     } catch (err) {
       alert(err.message);
@@ -715,7 +762,6 @@ async function updateLivePreviews() {
   await renderPreviewPane('a-preview-area', aText, currentFormAMaterials, 'a');
 }
 
-// ファイル単体の個別削除機能付きプレビューレンダラー
 async function renderPreviewPane(previewId, textVal, materials, typePrefix) {
   const area = document.getElementById(previewId);
   area.innerHTML = '';
@@ -738,7 +784,6 @@ async function renderPreviewPane(previewId, textVal, materials, typePrefix) {
       const wrapper = document.createElement('div');
       wrapper.className = "relative border rounded p-1 bg-white mb-2 group";
 
-      // 個別削除ボタン
       const delBtn = document.createElement('button');
       delBtn.type = "button";
       delBtn.className = "absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow z-10";
@@ -837,7 +882,6 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
     return;
   }
 
-  // 💡 修正: 隠しフィールドのIDが空の時は必ず新規のタイムスタンプIDを発番して上書き事故を防止
   const editingId = document.getElementById('editing-doc-id').value;
   const docId = editingId ? editingId : `doc_${Date.now()}`;
 
@@ -846,7 +890,6 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       .map(t => t.replace(/^#/, '').trim())
       .filter(t => t.length > 0);
 
-    // 既存データの成績・履歴を維持しつつペイロード作成
     const existingDoc = allDocuments.find(d => d.id === docId);
 
     const rawPayload = {
