@@ -42,8 +42,8 @@ let collectionPlayIndex = 0;
 let unsubscribeDocs = null;
 let unsubscribeCollections = null;
 
-// 正誤記録モーダルで選択中の一時ステータス
-let pendingResultType = null; // 'correct' または 'incorrect'
+// 正誤記録モーダル内の各小問に対する一時選択状態 { "小問名": "correct" | "incorrect" | null }
+let pendingSubResults = {};
 
 try {
   app = initializeApp(firebaseConfig);
@@ -129,8 +129,6 @@ document.getElementById('header-menu-btn').addEventListener('click', () => {
     alert("まず問題を選択するか、問題集を開いてください。");
     return;
   }
-  pendingResultType = null;
-  updatePendingResultUI();
   document.getElementById('stats-modal').classList.remove('hidden');
   updateModalStats();
 });
@@ -766,67 +764,118 @@ document.getElementById('edit-current-btn').addEventListener('click', () => {
   if (currentDocData) openRegisterForm(currentDocData);
 });
 
+// 正誤モーダルの表示と小問ごとの判定ボタンUI生成
 function updateModalStats() {
   if (!currentDocData) return;
+  
   document.getElementById('modal-target-title').innerText = `${currentDocData.title} ${currentDocData.subQuestion ? '('+currentDocData.subQuestion+')' : ''}`;
-  document.getElementById('stat-correct').innerText = currentDocData.stats?.correct || 0;
-  document.getElementById('stat-incorrect').innerText = currentDocData.stats?.incorrect || 0;
+  
+  const container = document.getElementById('subquestion-stats-container');
+  container.innerHTML = '';
+  pendingSubResults = {};
+
+  // カンマ区切りの小問リストの解析
+  const subList = currentDocData.subQuestion 
+    ? currentDocData.subQuestion.split(/[,、]/).map(s => s.trim()).filter(Boolean)
+    : ["全体"];
+
+  const subStatsMap = currentDocData.subStats || {};
+
+  subList.forEach(subKey => {
+    pendingSubResults[subKey] = null; // 一時選択状態を初期化
+
+    const currentSubStat = subStatsMap[subKey] || { correct: 0, incorrect: 0 };
+
+    const itemDiv = document.createElement('div');
+    itemDiv.className = "bg-slate-50 border rounded-lg p-3 space-y-2";
+
+    itemDiv.innerHTML = `
+      <div class="flex justify-between items-center text-xs">
+        <span class="font-bold text-slate-800">${subKey}</span>
+        <span class="text-[10px] text-gray-500">正解: <strong class="text-green-600">${currentSubStat.correct}</strong> / 誤答: <strong class="text-red-600">${currentSubStat.incorrect}</strong></span>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button data-key="${subKey}" data-type="correct" class="sub-btn-correct border-2 border-green-600 text-green-700 hover:bg-green-50 py-1.5 rounded text-xs font-bold transition">○ 正解</button>
+        <button data-key="${subKey}" data-type="incorrect" class="sub-btn-incorrect border-2 border-red-600 text-red-700 hover:bg-red-50 py-1.5 rounded text-xs font-bold transition">× 誤答</button>
+      </div>
+    `;
+
+    // ○ ボタンクリック時のイベント
+    itemDiv.querySelector('.sub-btn-correct').addEventListener('click', (e) => {
+      pendingSubResults[subKey] = pendingSubResults[subKey] === 'correct' ? null : 'correct';
+      updateSubButtonsUI(itemDiv, subKey);
+    });
+
+    // × ボタンクリック時のイベント
+    itemDiv.querySelector('.sub-btn-incorrect').addEventListener('click', (e) => {
+      pendingSubResults[subKey] = pendingSubResults[subKey] === 'incorrect' ? null : 'incorrect';
+      updateSubButtonsUI(itemDiv, subKey);
+    });
+
+    container.appendChild(itemDiv);
+  });
 }
 
-// 正誤記録ボタンのイベント（押しただけでは登録せず、選択状態にして「決定」を表示）
-document.getElementById('btn-select-correct').addEventListener('click', () => {
-  pendingResultType = 'correct';
-  updatePendingResultUI();
-});
+// 選択状態に応じたボタンのアクティブ表示切替
+function updateSubButtonsUI(parentDiv, subKey) {
+  const btnCorrect = parentDiv.querySelector('.sub-btn-correct');
+  const btnIncorrect = parentDiv.querySelector('.sub-btn-incorrect');
+  const state = pendingSubResults[subKey];
 
-document.getElementById('btn-select-incorrect').addEventListener('click', () => {
-  pendingResultType = 'incorrect';
-  updatePendingResultUI();
-});
+  btnCorrect.className = "sub-btn-correct border-2 py-1.5 rounded text-xs font-bold transition " + 
+    (state === 'correct' ? "bg-green-600 text-white border-green-600 ring-2 ring-green-300" : "border-green-600 text-green-700 hover:bg-green-50");
 
-function updatePendingResultUI() {
-  const btnCorrect = document.getElementById('btn-select-correct');
-  const btnIncorrect = document.getElementById('btn-select-incorrect');
-  const btnCommit = document.getElementById('btn-record-commit');
-
-  btnCorrect.className = "border-2 py-2 rounded text-xs font-bold transition shadow-xs " + (pendingResultType === 'correct' ? "bg-green-600 text-white border-green-600 ring-2 ring-green-300" : "border-green-600 text-green-700 hover:bg-green-50");
-  btnIncorrect.className = "border-2 py-2 rounded text-xs font-bold transition shadow-xs " + (pendingResultType === 'incorrect' ? "bg-red-600 text-white border-red-600 ring-2 ring-red-300" : "border-red-600 text-red-700 hover:bg-red-50");
-
-  if (pendingResultType) {
-    btnCommit.classList.remove('hidden');
-    btnCommit.innerText = `${pendingResultType === 'correct' ? '【○ 正解】' : '【× 誤答】'} で決定する`;
-  } else {
-    btnCommit.classList.add('hidden');
-  }
+  btnIncorrect.className = "sub-btn-incorrect border-2 py-1.5 rounded text-xs font-bold transition " + 
+    (state === 'incorrect' ? "bg-red-600 text-white border-red-600 ring-2 ring-red-300" : "border-red-600 text-red-700 hover:bg-red-50");
 }
 
-// 決定ボタンを押してはじめて保存
+// 「決定する」ボタンの処理（各小問の判定を一括で保存）
 document.getElementById('btn-record-commit').addEventListener('click', async () => {
-  if (!pendingResultType || !currentDocData || !currentUser) return;
+  if (!currentDocData || !currentUser) return;
 
   const stats = currentDocData.stats || { correct: 0, incorrect: 0 };
+  const subStatsMap = currentDocData.subStats || {};
   const history = currentDocData.history || [];
   const timestamp = new Date().toLocaleString('ja-JP');
 
-  if (pendingResultType === 'correct') {
-    stats.correct++;
-  } else {
-    stats.incorrect++;
-    history.push({ type: 'incorrect', timestamp: timestamp });
+  let updated = false;
+
+  Object.keys(pendingSubResults).forEach(subKey => {
+    const type = pendingSubResults[subKey];
+    if (!type) return;
+
+    updated = true;
+
+    if (!subStatsMap[subKey]) subStatsMap[subKey] = { correct: 0, incorrect: 0 };
+
+    if (type === 'correct') {
+      stats.correct++;
+      subStatsMap[subKey].correct++;
+    } else if (type === 'incorrect') {
+      stats.incorrect++;
+      subStatsMap[subKey].incorrect++;
+      history.push({ subQuestion: subKey, type: 'incorrect', timestamp: timestamp });
+    }
+  });
+
+  if (!updated) {
+    alert("「○」または「×」を選択してください。");
+    return;
   }
 
   currentDocData.stats = stats;
+  currentDocData.subStats = subStatsMap;
   currentDocData.history = history;
-  updateModalStats();
 
   try {
     await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { 
-      stats: stats, 
+      stats: stats,
+      subStats: subStatsMap,
       history: history 
     }, { merge: true });
 
     document.getElementById('stats-modal').classList.add('hidden');
-    pendingResultType = null;
+    alert("正誤記録を更新しました！");
   } catch (e) {
     console.error("正誤の保存に失敗:", e);
     alert("保存に失敗しました。");
