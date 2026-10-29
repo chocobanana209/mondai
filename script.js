@@ -109,6 +109,20 @@ document.getElementById('toggle-sidebar-btn').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('collapsed');
 });
 
+// 右上の ≡ ボタン (正誤記録メニュー) モダンの開閉制御
+document.getElementById('header-menu-btn').addEventListener('click', () => {
+  if (!currentDocData) {
+    alert("まず左のリストから問題を選択してください。");
+    return;
+  }
+  document.getElementById('stats-modal').classList.remove('hidden');
+  updateModalStats();
+});
+
+document.getElementById('close-stats-modal').addEventListener('click', () => {
+  document.getElementById('stats-modal').classList.add('hidden');
+});
+
 function setupRealtimeListeners() {
   detachRealtimeListeners();
   if (!currentUser) return;
@@ -123,7 +137,7 @@ function setupRealtimeListeners() {
       const updated = allDocuments.find(d => d.id === selectedDocId);
       if (updated) {
         currentDocData = updated;
-        updateSidebarStats();
+        updateModalStats();
       }
     }
   }, (error) => {
@@ -255,25 +269,46 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
-// ファイル処理・厳格な安全性チェック版
+// ファイル処理・詳細エラー説明機能付き
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
 
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
-    if (!file || typeof file.arrayBuffer !== 'function' || file.size === 0) continue;
+    if (!file) continue;
+
+    let targetFile = file;
+    let fileName = String(file.name || "attachment");
+    let type = 'raw';
+
+    const isHeic = fileName.match(/\.heic$/i) || file.type === 'image/heic' || file.type === 'image/heif';
+    
+    if (isHeic && typeof heic2any !== 'undefined') {
+      try {
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.8
+        });
+        targetFile = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
+      } catch (e) {
+        console.warn("HEIC変換スキップ:", e);
+        throw new Error(`ファイル「${file.name}」のHEIC形式解析に失敗しました。対応していない画像形式の可能性があります。`);
+      }
+    }
 
     try {
-      let targetFile = file;
-      let fileName = String(file.name || "attachment");
-      let type = 'raw';
-
       const buffer = await targetFile.arrayBuffer();
-      if (!buffer || buffer.byteLength === 0) continue;
+      if (!buffer || buffer.byteLength === 0) {
+        throw new Error(`ファイル「${fileName}」のデータが空（0バイト）です。`);
+      }
 
       const base64 = await arrayBufferToBase64(buffer);
-      if (!base64) continue;
+      if (!base64) {
+        throw new Error(`ファイル「${fileName}」のBase64エンコードに失敗しました。`);
+      }
 
       const compressed = LZString.compressToUTF16(base64);
 
@@ -286,6 +321,8 @@ async function processFiles(fileList) {
         if (!fileName.match(/\.jpe?g$/i)) {
           fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
         }
+      } else {
+        throw new Error(`ファイル「${fileName}」はサポートされていない拡張子・形式です。(.docx, .pdf, 画像に対応)`);
       }
 
       materials.push({
@@ -294,7 +331,9 @@ async function processFiles(fileList) {
         data: String(compressed)
       });
     } catch (err) {
-      console.error("個別ファイルの処理中にエラーが発生しました:", err);
+      console.error("ファイル処理エラー詳細:", err);
+      // 詳細な理由をユーザーにスローして通知
+      throw new Error(`[読み込み失敗] ${err.message}`);
     }
   }
   return materials;
@@ -347,7 +386,7 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理（JSONサニタイズによる完全対策版）
+// 保存処理（テキストなし・添付ファイルのみ、またはその逆も完全許可）
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -361,6 +400,7 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
   const qFiles = document.getElementById('q-file-input').files;
   const aFiles = document.getElementById('a-file-input').files;
 
+  // タイトル、問題テキスト、問題ファイルのいずれもない場合は弾く
   if (!title && !qText && (!qFiles || qFiles.length === 0)) {
     alert("タイトル、または問題文・添付ファイルのいずれかを入力・選択してください。");
     return;
@@ -387,7 +427,6 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       answerMaterials: aMaterials || []
     };
 
-    // 隠れたundefinedや不正なネストを完全に排除するクリーンアップ
     const cleanPayload = JSON.parse(JSON.stringify(rawPayload));
 
     await setDoc(doc(db, "users", currentUser.uid, "documents", docId), cleanPayload, { merge: true });
@@ -415,7 +454,7 @@ function selectDocument(docData) {
     activeTab = 'question';
   }
 
-  updateSidebarStats();
+  updateModalStats();
   renderContent();
   renderCurrentView();
 }
@@ -424,10 +463,9 @@ document.getElementById('edit-current-btn').addEventListener('click', () => {
   if (currentDocData) openRegisterForm(currentDocData);
 });
 
-function updateSidebarStats() {
+function updateModalStats() {
   if (!currentDocData) return;
-  document.getElementById('sidebar-stats-card').classList.remove('hidden');
-  document.getElementById('sidebar-target-title').innerText = currentDocData.title;
+  document.getElementById('modal-target-title').innerText = currentDocData.title;
   document.getElementById('stat-correct').innerText = currentDocData.stats?.correct || 0;
   document.getElementById('stat-incorrect').innerText = currentDocData.stats?.incorrect || 0;
 }
@@ -442,7 +480,7 @@ async function recordResult(type) {
   else stats.incorrect++;
 
   currentDocData.stats = stats;
-  updateSidebarStats();
+  updateModalStats();
 
   try {
     await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: stats }, { merge: true });
@@ -535,7 +573,6 @@ function clearDocumentView() {
   selectedDocId = null;
   currentDocData = null;
   document.getElementById('doc-title').innerText = '左のリストから問題を選択してください';
-  document.getElementById('sidebar-stats-card').classList.add('hidden');
   document.getElementById('edit-current-btn').classList.add('hidden');
   document.getElementById('content-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>データを選択してください。</p></div>';
 }
