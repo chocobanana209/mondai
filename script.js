@@ -255,7 +255,7 @@ document.getElementById('create-collection-btn').addEventListener('click', async
   }
 });
 
-// ファイル処理・HEIC自動変換（安全対策強化版）
+// ファイル処理・HEIC自動変換（安全対策版）
 async function processFiles(fileList) {
   const materials = [];
   if (!fileList || fileList.length === 0) return materials;
@@ -268,6 +268,7 @@ async function processFiles(fileList) {
     let type = 'raw';
 
     const isHeic = fileName.match(/\.heic$/i) || file.type === 'image/heic' || file.type === 'image/heif';
+    
     if (isHeic && typeof heic2any !== 'undefined') {
       try {
         const convertedBlob = await heic2any({
@@ -278,31 +279,34 @@ async function processFiles(fileList) {
         targetFile = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
         fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
       } catch (e) {
-        console.error("HEIC変換エラー:", e);
+        console.warn("HEIC変換スキップ（元のファイルで処理します）:", e);
       }
     }
 
-    const buffer = await targetFile.arrayBuffer();
-    const base64 = await arrayBufferToBase64(buffer);
-    const compressed = LZString.compressToUTF16(base64);
+    try {
+      const buffer = await targetFile.arrayBuffer();
+      const base64 = await arrayBufferToBase64(buffer);
+      const compressed = LZString.compressToUTF16(base64);
 
-    if (fileName.match(/\.docx$/i)) {
-      type = 'docx';
-    } else if (fileName.match(/\.pdf$/i)) {
-      type = 'pdf';
-    } else if (targetFile.type.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|webp)$/i)) {
-      type = 'image';
-      if (!fileName.match(/\.jpe?g$/i)) {
-        fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
+      if (fileName.match(/\.docx$/i)) {
+        type = 'docx';
+      } else if (fileName.match(/\.pdf$/i)) {
+        type = 'pdf';
+      } else if (targetFile.type.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|webp)$/i)) {
+        type = 'image';
+        if (!fileName.match(/\.jpe?g$/i)) {
+          fileName = fileName.replace(/\.[^/.]+$/, '') + '.jpg';
+        }
       }
-    }
 
-    // 必ず純粋なプリミティブ値のオブジェクトのみをプッシュする
-    materials.push({
-      fileName: String(fileName),
-      type: String(type),
-      data: String(compressed)
-    });
+      materials.push({
+        fileName: String(fileName),
+        type: String(type),
+        data: String(compressed)
+      });
+    } catch (err) {
+      console.error("個別ファイルの処理に失敗しました:", err);
+    }
   }
   return materials;
 }
@@ -354,7 +358,7 @@ function closeRegisterForm() {
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
-// 保存処理（バリデーションおよびサニタイズ強化版）
+// 保存処理
 document.getElementById('save-doc-btn').addEventListener('click', async () => {
   if (!currentUser) {
     alert("ログインしていません。");
@@ -381,7 +385,6 @@ document.getElementById('save-doc-btn').addEventListener('click', async () => {
       .map(t => t.replace(/^#/, '').trim())
       .filter(t => t.length > 0);
 
-    // 完全に不正なundefinedや空のネストを排除したペイロードを作成
     const payload = {
       title: String(title),
       tags: tags,
