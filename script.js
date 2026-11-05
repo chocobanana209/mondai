@@ -109,6 +109,18 @@ function renderDocumentList(docs) {
   });
 }
 
+// 追加：問題集リスト描画関数
+function renderCollectionList(collections) {
+  const container = document.getElementById('sidebar-list'); if (!container) return;
+  container.innerHTML = collections.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
+  collections.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'p-3 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition space-y-2';
+    item.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold text-slate-800 text-sm">${c.name}</span></div><div class="text-[10px] text-gray-500">登録問題数: ${c.documentIds ? c.documentIds.length : 0}問</div>`;
+    container.appendChild(item);
+  });
+}
+
 function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
