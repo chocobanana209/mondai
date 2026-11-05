@@ -30,10 +30,7 @@ function updateAuthUI(user) {
   const headerMenuBtn = document.getElementById('header-menu-btn');
 
   if (user) {
-    if (authStatus) {
-      authStatus.innerText = "ログイン中";
-      authStatus.className = "px-2 py-0.5 bg-green-100 text-green-800 rounded text-[10px] font-semibold";
-    }
+    if (authStatus) { authStatus.innerText = "ログイン中"; authStatus.className = "px-2 py-0.5 bg-green-100 text-green-800 rounded text-[10px] font-semibold"; }
     if (loginBtn) loginBtn.classList.add('hidden');
     if (logoutBtn) logoutBtn.classList.remove('hidden');
     if (userInfo) userInfo.classList.remove('hidden');
@@ -42,10 +39,7 @@ function updateAuthUI(user) {
     if (userName) userName.innerText = user.displayName || user.email;
     if (mainContent) mainContent.classList.remove('opacity-50', 'pointer-events-none');
   } else {
-    if (authStatus) {
-      authStatus.innerText = "未ログイン";
-      authStatus.className = "px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] font-semibold";
-    }
+    if (authStatus) { authStatus.innerText = "未ログイン"; authStatus.className = "px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] font-semibold"; }
     if (loginBtn) loginBtn.classList.remove('hidden');
     if (logoutBtn) logoutBtn.classList.add('hidden');
     if (userInfo) userInfo.classList.add('hidden');
@@ -58,16 +52,14 @@ document.getElementById('login-btn').addEventListener('click', () => signInWithP
 document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
 document.getElementById('toggle-sidebar-btn').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('collapsed'));
 
-document.getElementById('nav-docs').addEventListener('click', () => { currentMainView = 'documents'; setActiveNavTab('nav-docs'); renderCurrentView(); });
-document.getElementById('nav-collections').addEventListener('click', () => { currentMainView = 'collections'; setActiveNavTab('nav-collections'); renderCurrentView(); });
-document.getElementById('nav-tables').addEventListener('click', () => { currentMainView = 'tables'; setActiveNavTab('nav-tables'); renderCurrentView(); });
+document.getElementById('nav-docs').addEventListener('click', () => { currentMainView = 'documents'; isPlayingCollection = false; setActiveNavTab('nav-docs'); renderCurrentView(); clearDocumentView(); });
+document.getElementById('nav-collections').addEventListener('click', () => { currentMainView = 'collections'; isPlayingCollection = false; setActiveNavTab('nav-collections'); renderCurrentView(); });
+document.getElementById('nav-tables').addEventListener('click', () => { currentMainView = 'tables'; isPlayingCollection = false; setActiveNavTab('nav-tables'); renderCurrentView(); });
 
 function setActiveNavTab(tabId) {
   ['nav-docs', 'nav-collections', 'nav-tables'].forEach(id => {
     const btn = document.getElementById(id);
-    if (btn) {
-      btn.className = id === tabId ? "flex-1 py-1.5 font-bold text-blue-600 bg-white rounded shadow-sm text-xs" : "flex-1 py-1.5 font-medium text-gray-500 hover:text-gray-700 text-xs";
-    }
+    if (btn) btn.className = id === tabId ? "flex-1 py-1.5 font-bold text-blue-600 bg-white rounded shadow-sm text-xs" : "flex-1 py-1.5 font-medium text-gray-500 hover:text-gray-700 text-xs";
   });
 }
 
@@ -92,15 +84,21 @@ function renderCurrentView() {
   else if (currentMainView === 'tables') renderTableList(allTables);
 }
 
+// --- 通常問題リスト ---
 function renderDocumentList(docs) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = docs.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題がありません。</p>' : '';
   docs.forEach(data => {
     const item = document.createElement('div');
-    item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${data.id === selectedDocId ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50'}`;
-    item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div>`;
+    item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${data.id === selectedDocId && !isPlayingCollection ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50'}`;
+    item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div><div class="text-[10px] text-gray-500">正解: ${data.stats?.correct || 0} / 誤答: ${data.stats?.incorrect || 0}</div>`;
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('del-btn') || e.target.classList.contains('edit-btn')) return;
+      if (isPlayingCollection) {
+        const idx = collectionPlayList.findIndex(d => d.id === data.id);
+        if (idx !== -1) { collectionPlayIndex = idx; renderCollectionPlayerCurrent(); }
+        return;
+      }
       selectDocument(data);
     });
     item.querySelector('.del-btn').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "documents", data.id)); });
@@ -109,17 +107,186 @@ function renderDocumentList(docs) {
   });
 }
 
+// --- 問題集リスト ＆ プレイ機能 ---
+document.getElementById('create-collection-btn').addEventListener('click', () => openCollectionEditModal(null));
+
 function renderCollectionList(collections) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = collections.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
   collections.forEach(c => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition space-y-2';
-    item.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold text-slate-800 text-sm">${c.name}</span></div><div class="text-[10px] text-gray-500">登録問題数: ${c.documentIds ? c.documentIds.length : 0}問</div>`;
+    const count = c.documentIds ? c.documentIds.length : 0;
+    item.innerHTML = `
+      <div class="flex justify-between items-center">
+        <span class="font-bold text-slate-800 text-sm truncate">${c.name}</span>
+        <div class="flex gap-1">
+          <button class="edit-coll text-blue-600 font-bold">編集</button>
+          <button class="del-coll text-red-500 font-bold">削除</button>
+        </div>
+      </div>
+      <div class="text-[10px] text-gray-500">登録問題数: ${count}問</div>
+      <button class="play-coll-btn w-full bg-blue-600 text-white py-1.5 rounded font-bold">問題集をプレイ 🚀</button>
+    `;
+    item.querySelector('.play-coll-btn').addEventListener('click', (e) => { e.stopPropagation(); startCollectionPlay(c); });
+    item.querySelector('.edit-coll').addEventListener('click', (e) => { e.stopPropagation(); openCollectionEditModal(c); });
+    item.querySelector('.del-coll').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "collections", c.id)); });
     container.appendChild(item);
   });
 }
 
+function openCollectionEditModal(collData) {
+  document.getElementById('editing-coll-id').value = collData ? collData.id : '';
+  document.getElementById('coll-name-input').value = collData ? collData.name : '';
+  document.getElementById('coll-modal-title').innerText = collData ? "問題集の編集" : "新しい問題集の作成";
+  
+  const listEl = document.getElementById('coll-problems-checkbox-list');
+  listEl.innerHTML = '';
+  const selectedIds = collData && collData.documentIds ? collData.documentIds : [];
+
+  allDocuments.forEach(doc => {
+    const label = document.createElement('label');
+    label.className = "flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer";
+    const isChecked = selectedIds.includes(doc.id);
+    label.innerHTML = `<input type="checkbox" value="${doc.id}" ${isChecked ? 'checked' : ''} class="rounded"/><span class="truncate">${doc.title}</span>`;
+    listEl.appendChild(label);
+  });
+  document.getElementById('collection-edit-modal').classList.remove('hidden');
+}
+
+document.getElementById('close-coll-modal').addEventListener('click', () => document.getElementById('collection-edit-modal').classList.add('hidden'));
+document.getElementById('save-coll-modal-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  const name = document.getElementById('coll-name-input').value.trim();
+  if (!name) { alert("問題集名を入力してください。"); return; }
+  const checkedBoxes = document.querySelectorAll('#coll-problems-checkbox-list input[type="checkbox"]:checked');
+  const documentIds = Array.from(checkedBoxes).map(b => b.value);
+  const editingId = document.getElementById('editing-coll-id').value;
+  const collId = editingId ? editingId : `coll_${Date.now()}`;
+
+  await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, documentIds, updatedAt: Date.now() }, { merge: true });
+  alert("問題集を保存しました！");
+  document.getElementById('collection-edit-modal').classList.add('hidden');
+});
+
+function startCollectionPlay(collData) {
+  const docs = collData.documentIds.map(id => allDocuments.find(d => d.id === id)).filter(Boolean);
+  if (docs.length === 0) { alert("問題集に有効な問題が含まれていません。"); return; }
+  collectionPlayList = docs;
+  collectionPlayIndex = 0;
+  isPlayingCollection = true;
+
+  document.getElementById('view-mode-container').classList.add('hidden');
+  document.getElementById('table-player-container').classList.add('hidden');
+  document.getElementById('collection-player-container').classList.remove('hidden');
+  document.getElementById('collection-player-title').innerText = collData.name;
+  renderCollectionPlayerCurrent();
+}
+
+function renderCollectionPlayerCurrent() {
+  const docData = collectionPlayList[collectionPlayIndex];
+  currentDocData = docData;
+  document.getElementById('coll-progress-badge').innerText = `${collectionPlayIndex + 1} / ${collectionPlayList.length}`;
+  renderPaneContentForContainer(document.getElementById('coll-q-display-area'), docData.questionText, docData.questionMaterials);
+  
+  const collAnsPane = document.getElementById('coll-answer-pane');
+  if (isContinuousAnswerOn) {
+    collAnsPane.classList.remove('hidden');
+    renderPaneContentForContainer(document.getElementById('coll-a-display-area'), docData.answerText, docData.answerMaterials, "解答解説なし");
+    document.getElementById('toggle-coll-answer-btn').innerText = "💡 解答解説を隠す";
+  } else {
+    collAnsPane.classList.add('hidden');
+    document.getElementById('toggle-coll-answer-btn').innerText = "💡 解答解説を表示";
+  }
+}
+
+document.getElementById('coll-next-btn').addEventListener('click', () => {
+  if (collectionPlayIndex < collectionPlayList.length - 1) { collectionPlayIndex++; renderCollectionPlayerCurrent(); }
+  else { alert("問題集の最後の問題です！"); }
+});
+document.getElementById('coll-prev-btn').addEventListener('click', () => {
+  if (collectionPlayIndex > 0) { collectionPlayIndex--; renderCollectionPlayerCurrent(); }
+});
+document.getElementById('exit-collection-btn').addEventListener('click', () => {
+  isPlayingCollection = false;
+  document.getElementById('collection-player-container').classList.add('hidden');
+  document.getElementById('view-mode-container').classList.remove('hidden');
+  clearDocumentView();
+});
+
+// --- 解答解説の表示/非表示 (単体問題) ---
+const answerPane = document.getElementById('answer-pane');
+const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
+document.getElementById('toggle-answer-pane-btn').addEventListener('click', () => {
+  answerPane.classList.toggle('hidden');
+  toggleAnswerBtn.innerText = answerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
+});
+document.getElementById('close-answer-pane-btn').addEventListener('click', () => {
+  answerPane.classList.add('hidden');
+  toggleAnswerBtn.innerText = "💡 解答解説を表示";
+});
+
+// 問題集用解答トグル
+const collAnswerPane = document.getElementById('coll-answer-pane');
+const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
+toggleCollAnswerBtn.addEventListener('click', () => {
+  collAnswerPane.classList.toggle('hidden');
+  toggleCollAnswerBtn.innerText = collAnswerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
+  if (!collAnswerPane.classList.contains('hidden') && currentDocData) {
+    renderPaneContentForContainer(document.getElementById('coll-a-display-area'), currentDocData.answerText, currentDocData.answerMaterials, "解答解説なし");
+  }
+});
+document.getElementById('close-coll-answer-pane-btn').addEventListener('click', () => {
+  collAnswerPane.classList.add('hidden');
+  toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
+});
+
+// 連続解答トグル
+document.getElementById('toggle-continuous-answer-btn').addEventListener('click', () => {
+  isContinuousAnswerOn = !isContinuousAnswerOn;
+  document.getElementById('continuous-status-text').innerText = isContinuousAnswerOn ? "ON" : "OFF";
+  document.getElementById('continuous-status-text').className = isContinuousAnswerOn ? "text-emerald-600 font-bold" : "text-gray-500 font-semibold";
+  if (isPlayingCollection) renderCollectionPlayerCurrent();
+});
+
+// --- 正誤記録機能 (Stats Modal) ---
+document.getElementById('header-menu-btn').addEventListener('click', () => {
+  if (!currentDocData && !isPlayingCollection) { alert("問題を選択してください。"); return; }
+  document.getElementById('stats-modal').classList.remove('hidden');
+  updateModalStats();
+});
+document.getElementById('close-stats-modal').addEventListener('click', () => document.getElementById('stats-modal').classList.add('hidden'));
+
+function updateModalStats() {
+  const docData = currentDocData;
+  if (!docData) return;
+  document.getElementById('modal-target-title').innerText = docData.title;
+  const container = document.getElementById('subquestion-stats-container');
+  container.innerHTML = `
+    <div class="space-y-3">
+      <div class="flex justify-between items-center bg-green-50 p-3 rounded">
+        <span class="font-bold text-green-800">⭕ 正解数</span>
+        <input type="number" id="stat-correct-input" value="${docData.stats?.correct || 0}" class="w-20 border rounded p-1 text-center"/>
+      </div>
+      <div class="flex justify-between items-center bg-red-50 p-3 rounded">
+        <span class="font-bold text-red-800">❌ 誤答数</span>
+        <input type="number" id="stat-incorrect-input" value="${docData.stats?.incorrect || 0}" class="w-20 border rounded p-1 text-center"/>
+      </div>
+    </div>
+  `;
+}
+
+document.getElementById('btn-record-commit').addEventListener('click', async () => {
+  if (!currentUser || !currentDocData) return;
+  const c = parseInt(document.getElementById('stat-correct-input').value) || 0;
+  const i = parseInt(document.getElementById('stat-incorrect-input').value) || 0;
+  currentDocData.stats = { correct: c, incorrect: i };
+  await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: currentDocData.stats }, { merge: true });
+  alert("正誤記録を保存しました！");
+  document.getElementById('stats-modal').classList.add('hidden');
+});
+
+// --- 一問一答表リスト ＆ 編集 ＆ 演習 ---
 function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -134,12 +301,12 @@ function renderTableList(tables) {
   });
 }
 
-// --- 一問一答表エディタ（並び替え対応版） ---
 document.getElementById('btn-nav-table-register').addEventListener('click', () => openTableRegisterForm(null));
 document.getElementById('cancel-table-register-btn').addEventListener('click', closeTableRegisterForm);
 
 function openTableRegisterForm(tableData = null) {
   document.getElementById('view-mode-container').classList.add('hidden');
+  document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
   document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.remove('hidden');
@@ -244,10 +411,7 @@ function addRowToTable(initialData = null) {
   tr.addEventListener('dragstart', () => tr.classList.add('opacity-40'));
   tr.addEventListener('dragend', () => tr.classList.remove('opacity-40'));
   tr.addEventListener('dragover', (e) => e.preventDefault());
-  tr.addEventListener('drop', (e) => {
-    e.preventDefault();
-    reindexTableRows();
-  });
+  tr.addEventListener('drop', (e) => { e.preventDefault(); reindexTableRows(); });
 
   tr.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, tr.dataset.imgData));
   tr.querySelector('.row-del-btn').addEventListener('click', () => {
@@ -285,90 +449,58 @@ function setupTableKeyboardNavigation(tr) {
   });
 }
 
-const saveTableBtn = document.getElementById('save-table-doc-btn');
-if (saveTableBtn) {
-  saveTableBtn.addEventListener('click', async () => {
-    if (!currentUser) return;
-    const titleEl = document.getElementById('table-name-input');
-    const title = titleEl ? titleEl.value.trim() : "";
-    if (!title) { alert("タイトルを入力してください。"); return; }
+document.getElementById('save-table-doc-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  const title = document.getElementById('table-name-input').value.trim();
+  if (!title) { alert("タイトルを入力してください。"); return; }
 
-    const importancesInput = document.getElementById('table-importances-input');
-    const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
-    const items = [];
-    document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
-      const q = tr.querySelector('.row-q');
-      const a = tr.querySelector('.row-a');
-      const imp = tr.querySelector('.row-imp');
-      const exp = tr.querySelector('.row-exp');
-      items.push({
-        id: tr.dataset.itemId,
-        question: q ? q.value.trim() : "",
-        questionImage: tr.dataset.imgData || "",
-        answer: a ? a.value.trim() : "",
-        importance: imp ? imp.value : "中",
-        explanation: exp ? exp.value.trim() : ""
-      });
+  const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
+  const items = [];
+  document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
+    items.push({
+      id: tr.dataset.itemId,
+      question: tr.querySelector('.row-q').value.trim(),
+      questionImage: tr.dataset.imgData || "",
+      answer: tr.querySelector('.row-a').value.trim(),
+      importance: tr.querySelector('.row-imp').value,
+      explanation: tr.querySelector('.row-exp').value.trim()
     });
-
-    const editingTableIdEl = document.getElementById('editing-table-id');
-    const tableId = (editingTableIdEl && editingTableIdEl.value) ? editingTableIdEl.value : `table_${Date.now()}`;
-    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, importances, items, updatedAt: Date.now() }, { merge: true });
-    alert("保存しました！"); closeTableRegisterForm();
   });
-}
 
-// --- 演習関連 ---
-function openTableConfigModal(tableData) {
-  activeTableData = tableData;
-  const modal = document.getElementById('table-config-modal');
-  if (modal) modal.classList.remove('hidden');
-}
-
-const closeConfigModalBtn = document.getElementById('close-table-config-modal');
-if (closeConfigModalBtn) closeConfigModalBtn.addEventListener('click', () => {
-  const modal = document.getElementById('table-config-modal');
-  if (modal) modal.classList.add('hidden');
+  const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
+  await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, importances, items, updatedAt: Date.now() }, { merge: true });
+  alert("保存しました！"); closeTableRegisterForm();
 });
 
-const startExBtn = document.getElementById('start-table-exercise-btn');
-if (startExBtn) {
-  startExBtn.addEventListener('click', () => {
-    const orderEl = document.getElementById('config-order-select');
-    const scopeEl = document.getElementById('config-scope-select');
-    const limitEl = document.getElementById('config-limit-input');
-    
-    const order = orderEl ? orderEl.value : 'sequential';
-    const scope = scopeEl ? scopeEl.value : 'all';
-    const limit = limitEl ? (parseInt(limitEl.value) || 10) : 10;
-    let items = [...activeTableData.items];
-
-    if (scope === 'mistaken') {
-      items = items.filter(item => localStorage.getItem(`qa_hist_${activeTableData.id}_${item.id}`) === 'incorrect');
-      if (items.length === 0) { alert("間違えた問題がありません。"); return; }
-    }
-    if (order === 'random') items.sort(() => Math.random() - 0.5);
-
-    exerciseQueue = items.slice(0, limit); retryQueue = []; currentExerciseIndex = 0; exerciseTotalCount = exerciseQueue.length; isRetryLoop = false;
-    
-    const configModal = document.getElementById('table-config-modal');
-    if (configModal) configModal.classList.add('hidden');
-
-    const viewContainer = document.getElementById('view-mode-container');
-    const tableRegContainer = document.getElementById('table-register-form-container');
-    const tablePlayerContainer = document.getElementById('table-player-container');
-    const exContent = document.getElementById('table-exercise-content');
-    const exResult = document.getElementById('table-exercise-result');
-
-    if (viewContainer) viewContainer.classList.add('hidden');
-    if (tableRegContainer) tableRegContainer.classList.add('hidden');
-    if (tablePlayerContainer) tablePlayerContainer.classList.remove('hidden');
-    if (exContent) exContent.classList.remove('hidden');
-    if (exResult) exResult.classList.add('hidden');
-    
-    renderExerciseCurrentItem();
-  });
+// --- 一問一答 演習関連 ---
+function openTableConfigModal(tableData) {
+  activeTableData = tableData;
+  document.getElementById('table-config-modal').classList.remove('hidden');
 }
+document.getElementById('close-table-config-modal').addEventListener('click', () => document.getElementById('table-config-modal').classList.add('hidden'));
+
+document.getElementById('start-table-exercise-btn').addEventListener('click', () => {
+  const order = document.getElementById('config-order-select').value;
+  const scope = document.getElementById('config-scope-select').value;
+  const limit = parseInt(document.getElementById('config-limit-input').value) || 10;
+  let items = [...activeTableData.items];
+
+  if (scope === 'mistaken') {
+    items = items.filter(item => localStorage.getItem(`qa_hist_${activeTableData.id}_${item.id}`) === 'incorrect');
+    if (items.length === 0) { alert("間違えた問題がありません。"); return; }
+  }
+  if (order === 'random') items.sort(() => Math.random() - 0.5);
+
+  exerciseQueue = items.slice(0, limit); retryQueue = []; currentExerciseIndex = 0; exerciseTotalCount = exerciseQueue.length; isRetryLoop = false;
+  document.getElementById('table-config-modal').classList.add('hidden');
+  document.getElementById('view-mode-container').classList.add('hidden');
+  document.getElementById('collection-player-container').classList.add('hidden');
+  document.getElementById('table-register-form-container').classList.add('hidden');
+  document.getElementById('table-player-container').classList.remove('hidden');
+  document.getElementById('table-exercise-content').classList.remove('hidden');
+  document.getElementById('table-exercise-result').classList.add('hidden');
+  renderExerciseCurrentItem();
+});
 
 function renderExerciseCurrentItem() {
   if (currentExerciseIndex >= exerciseQueue.length) {
@@ -376,142 +508,68 @@ function renderExerciseCurrentItem() {
       exerciseQueue = [...retryQueue]; retryQueue = []; currentExerciseIndex = 0; isRetryLoop = true;
       alert("リトライ周回を開始します！"); renderExerciseCurrentItem(); return;
     }
-    const exContent = document.getElementById('table-exercise-content');
-    const exResult = document.getElementById('table-exercise-result');
-    const summary = document.getElementById('table-result-summary');
-
-    if (exContent) exContent.classList.add('hidden');
-    if (exResult) exResult.classList.remove('hidden');
-    if (summary) summary.innerText = `全 ${exerciseTotalCount} 問完了しました！`;
+    document.getElementById('table-exercise-content').classList.add('hidden');
+    document.getElementById('table-exercise-result').classList.remove('hidden');
+    document.getElementById('table-result-summary').innerText = `全 ${exerciseTotalCount} 問完了しました！`;
     return;
   }
   const item = exerciseQueue[currentExerciseIndex];
-  
-  const progressCount = document.getElementById('table-progress-count');
-  const loopBadge = document.getElementById('table-loop-badge');
-  const exQuestion = document.getElementById('t-ex-question');
-  const exQImgArea = document.getElementById('t-ex-q-image-area');
-  const exAnswerArea = document.getElementById('t-ex-answer-area');
-  const exShowAnsBtn = document.getElementById('t-ex-show-ans-btn');
-  const exGradeButtons = document.getElementById('t-ex-grade-buttons');
-  const exAnswer = document.getElementById('t-ex-answer');
-  const exExplanation = document.getElementById('t-ex-explanation');
-
-  if (progressCount) progressCount.innerText = `問題 ${currentExerciseIndex + 1} / ${exerciseQueue.length}`;
-  if (loopBadge) {
-    loopBadge.innerText = isRetryLoop ? "🔥 リトライ周回" : "通常周回";
-    loopBadge.className = isRetryLoop ? "px-2 py-0.5 bg-red-100 text-red-800 rounded font-bold" : "px-2 py-0.5 bg-blue-100 text-blue-800 rounded";
-  }
-  if (exQuestion) exQuestion.innerText = item.question;
-  if (exQImgArea) exQImgArea.innerHTML = item.questionImage ? `<img src="${item.questionImage}" class="max-h-40 rounded mx-auto mt-2"/>` : '';
-  if (exAnswerArea) exAnswerArea.classList.add('hidden');
-  if (exShowAnsBtn) exShowAnsBtn.classList.remove('hidden');
-  if (exGradeButtons) exGradeButtons.classList.add('hidden');
-  if (exAnswer) exAnswer.innerText = item.answer;
-  if (exExplanation) exExplanation.innerText = item.explanation || "解説なし";
+  document.getElementById('table-progress-count').innerText = `問題 ${currentExerciseIndex + 1} / ${exerciseQueue.length}`;
+  document.getElementById('table-loop-badge').innerText = isRetryLoop ? "🔥 リトライ周回" : "通常周回";
+  document.getElementById('t-ex-question').innerText = item.question;
+  document.getElementById('t-ex-q-image-area').innerHTML = item.questionImage ? `<img src="${item.questionImage}" class="max-h-40 rounded mx-auto mt-2"/>` : '';
+  document.getElementById('t-ex-answer-area').classList.add('hidden');
+  document.getElementById('t-ex-show-ans-btn').classList.remove('hidden');
+  document.getElementById('t-ex-grade-buttons').classList.add('hidden');
+  document.getElementById('t-ex-answer').innerText = item.answer;
+  document.getElementById('t-ex-explanation').innerText = item.explanation || "解説なし";
 }
 
-const showAnsBtn = document.getElementById('t-ex-show-ans-btn');
-if (showAnsBtn) {
-  showAnsBtn.addEventListener('click', () => {
-    const ansArea = document.getElementById('t-ex-answer-area');
-    const gradeBtns = document.getElementById('t-ex-grade-buttons');
-    if (ansArea) ansArea.classList.remove('hidden');
-    if (showAnsBtn) showAnsBtn.classList.add('hidden');
-    if (gradeBtns) gradeBtns.classList.remove('hidden');
-  });
-}
+document.getElementById('t-ex-show-ans-btn').addEventListener('click', () => {
+  document.getElementById('t-ex-answer-area').classList.remove('hidden');
+  document.getElementById('t-ex-show-ans-btn').classList.add('hidden');
+  document.getElementById('t-ex-grade-buttons').classList.remove('hidden');
+});
+document.getElementById('t-ex-correct-btn').addEventListener('click', () => {
+  localStorage.setItem(`qa_hist_${activeTableData.id}_${exerciseQueue[currentExerciseIndex].id}`, 'correct');
+  currentExerciseIndex++; renderExerciseCurrentItem();
+});
+document.getElementById('t-ex-incorrect-btn').addEventListener('click', () => {
+  localStorage.setItem(`qa_hist_${activeTableData.id}_${exerciseQueue[currentExerciseIndex].id}`, 'incorrect');
+  retryQueue.push(exerciseQueue[currentExerciseIndex]);
+  currentExerciseIndex++; renderExerciseCurrentItem();
+});
+document.getElementById('restart-table-ex-btn').addEventListener('click', () => openTableConfigModal(activeTableData));
+document.getElementById('exit-table-player-btn').addEventListener('click', () => {
+  document.getElementById('table-player-container').classList.add('hidden');
+  document.getElementById('view-mode-container').classList.remove('hidden');
+});
 
-const correctBtn = document.getElementById('t-ex-correct-btn');
-if (correctBtn) {
-  correctBtn.addEventListener('click', () => {
-    if (activeTableData && exerciseQueue[currentExerciseIndex]) {
-      localStorage.setItem(`qa_hist_${activeTableData.id}_${exerciseQueue[currentExerciseIndex].id}`, 'correct');
-    }
-    currentExerciseIndex++; 
-    renderExerciseCurrentItem();
-  });
-}
-
-const incorrectBtn = document.getElementById('t-ex-incorrect-btn');
-if (incorrectBtn) {
-  incorrectBtn.addEventListener('click', () => {
-    if (activeTableData && exerciseQueue[currentExerciseIndex]) {
-      localStorage.setItem(`qa_hist_${activeTableData.id}_${exerciseQueue[currentExerciseIndex].id}`, 'incorrect');
-    }
-    retryQueue.push(exerciseQueue[currentExerciseIndex]);
-    currentExerciseIndex++; 
-    renderExerciseCurrentItem();
-  });
-}
-
-const restartExBtn = document.getElementById('restart-table-ex-btn');
-if (restartExBtn) restartExBtn.addEventListener('click', () => openTableConfigModal(activeTableData));
-
-const exitPlayerBtn = document.getElementById('exit-table-player-btn');
-if (exitPlayerBtn) {
-  exitPlayerBtn.addEventListener('click', () => {
-    const playerContainer = document.getElementById('table-player-container');
-    const viewContainer = document.getElementById('view-mode-container');
-    if (playerContainer) playerContainer.classList.add('hidden');
-    if (viewContainer) viewContainer.classList.remove('hidden');
-  });
-}
-
-// 画像モーダル関連
+// --- 画像モーダル関連 ---
 let modalTargetItemId = null, modalSelectedImageBase64 = "";
 function openQaImageModal(itemId, currentBase64) {
   modalTargetItemId = itemId; modalSelectedImageBase64 = currentBase64 || "";
-  const modal = document.getElementById('qa-image-modal');
-  const preview = document.getElementById('qa-modal-img-preview');
-  if (modal) modal.classList.remove('hidden');
-  if (preview) {
-    preview.innerHTML = modalSelectedImageBase64 ? `<img src="${modalSelectedImageBase64}" class="max-h-32 mx-auto rounded"/>` : `<span class="text-gray-400 text-xs">画像未選択</span>`;
-  }
+  document.getElementById('qa-image-modal').classList.remove('hidden');
+  document.getElementById('qa-modal-img-preview').innerHTML = modalSelectedImageBase64 ? `<img src="${modalSelectedImageBase64}" class="max-h-32 mx-auto rounded"/>` : `<span class="text-gray-400 text-xs">画像未選択</span>`;
 }
-
-const closeImgModalBtn = document.getElementById('close-qa-img-modal');
-if (closeImgModalBtn) closeImgModalBtn.addEventListener('click', () => {
-  const modal = document.getElementById('qa-image-modal');
-  if (modal) modal.classList.add('hidden');
+document.getElementById('close-qa-img-modal').addEventListener('click', () => document.getElementById('qa-image-modal').classList.add('hidden'));
+document.getElementById('qa-modal-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const buffer = await file.arrayBuffer();
+  modalSelectedImageBase64 = `data:${file.type};base64,${await arrayBufferToBase64(buffer)}`;
+  document.getElementById('qa-modal-img-preview').innerHTML = `<img src="${modalSelectedImageBase64}" class="max-h-32 mx-auto rounded"/>`;
 });
-
-const modalFileInput = document.getElementById('qa-modal-file-input');
-if (modalFileInput) {
-  modalFileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const buffer = await file.arrayBuffer();
-    modalSelectedImageBase64 = `data:${file.type};base64,${await arrayBufferToBase64(buffer)}`;
-    const preview = document.getElementById('qa-modal-img-preview');
-    if (preview) preview.innerHTML = `<img src="${modalSelectedImageBase64}" class="max-h-32 mx-auto rounded"/>`;
-  });
-}
-
-const removeImgBtn = document.getElementById('qa-img-remove-btn');
-if (removeImgBtn) {
-  removeImgBtn.addEventListener('click', () => {
-    modalSelectedImageBase64 = "";
-    const preview = document.getElementById('qa-modal-img-preview');
-    if (preview) preview.innerHTML = `<span class="text-gray-400 text-xs">画像未選択</span>`;
-  });
-}
-
-const saveImgBtn = document.getElementById('qa-img-save-btn');
-if (saveImgBtn) {
-  saveImgBtn.addEventListener('click', () => {
-    const tr = document.querySelector(`tr[data-item-id="${modalTargetItemId}"]`);
-    if (tr) {
-      tr.dataset.imgData = modalSelectedImageBase64;
-      const btn = tr.querySelector('.row-img-btn');
-      if (btn) {
-        btn.className = modalSelectedImageBase64 ? "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-blue-600 text-white" : "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700";
-        btn.innerText = modalSelectedImageBase64 ? "画像付(変)" : "画像追加";
-      }
-    }
-    const modal = document.getElementById('qa-image-modal');
-    if (modal) modal.classList.add('hidden');
-  });
-}
+document.getElementById('qa-img-remove-btn').addEventListener('click', () => { modalSelectedImageBase64 = ""; document.getElementById('qa-modal-img-preview').innerHTML = `<span class="text-gray-400 text-xs">画像未選択</span>`; });
+document.getElementById('qa-img-save-btn').addEventListener('click', () => {
+  const tr = document.querySelector(`tr[data-item-id="${modalTargetItemId}"]`);
+  if (tr) {
+    tr.dataset.imgData = modalSelectedImageBase64;
+    const btn = tr.querySelector('.row-img-btn');
+    btn.className = modalSelectedImageBase64 ? "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-blue-600 text-white" : "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700";
+    btn.innerText = modalSelectedImageBase64 ? "画像付(変)" : "画像追加";
+  }
+  document.getElementById('qa-image-modal').classList.add('hidden');
+});
 
 function arrayBufferToBase64(buffer) {
   return new Promise(resolve => {
@@ -521,30 +579,93 @@ function arrayBufferToBase64(buffer) {
   });
 }
 
+// --- 通常問題登録・閲覧 ---
+document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm(null));
+document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
+
+function openRegisterForm(docData = null) {
+  document.getElementById('view-mode-container').classList.add('hidden');
+  document.getElementById('collection-player-container').classList.add('hidden');
+  document.getElementById('table-player-container').classList.add('hidden');
+  document.getElementById('table-register-form-container').classList.add('hidden');
+  document.getElementById('register-form-container').classList.remove('hidden');
+
+  document.getElementById('editing-doc-id').value = docData ? docData.id : '';
+  document.getElementById('problem-name-input').value = docData ? docData.title : '';
+  document.getElementById('subquestion-input').value = docData ? docData.subQuestion : '';
+  document.getElementById('subject-input').value = docData ? docData.subject : '';
+  document.getElementById('unit-input').value = docData ? docData.unit : '';
+  document.getElementById('q-text-input').value = docData ? docData.questionText : '';
+  document.getElementById('a-text-input').value = docData ? docData.answerText : '';
+}
+
+function closeRegisterForm() {
+  document.getElementById('register-form-container').classList.add('hidden');
+  document.getElementById('view-mode-container').classList.remove('hidden');
+}
+
+document.getElementById('save-doc-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  const title = document.getElementById('problem-name-input').value.trim();
+  if (!title) { alert("タイトルを入力してください。"); return; }
+  const docId = document.getElementById('editing-doc-id').value || `doc_${Date.now()}`;
+  const payload = {
+    title,
+    subQuestion: document.getElementById('subquestion-input').value.trim(),
+    subject: document.getElementById('subject-input').value.trim(),
+    unit: document.getElementById('unit-input').value.trim(),
+    questionText: document.getElementById('q-text-input').value.trim(),
+    answerText: document.getElementById('a-text-input').value.trim(),
+    updatedAt: Date.now(),
+    stats: { correct: 0, incorrect: 0 }
+  };
+  await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
+  alert("保存しました！"); closeRegisterForm();
+});
+
 function selectDocument(docData) {
   selectedDocId = docData.id; currentDocData = docData;
-  const docTitle = document.getElementById('doc-title');
-  const editBtn = document.getElementById('edit-current-btn');
-  if (docTitle) docTitle.innerText = `${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}`;
-  if (editBtn) editBtn.classList.remove('hidden');
+  document.getElementById('doc-title').innerText = `${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}`;
+  document.getElementById('edit-current-btn').classList.remove('hidden');
+  const hasAns = docData.answerText && docData.answerText.length > 0;
+  if (hasAns) document.getElementById('toggle-answer-pane-btn').classList.remove('hidden');
+  else document.getElementById('toggle-answer-pane-btn').classList.add('hidden');
+  answerPane.classList.add('hidden');
+  toggleAnswerBtn.innerText = "💡 解答解説を表示";
   renderContent();
+  renderCurrentView();
 }
+
+document.getElementById('edit-current-btn').addEventListener('click', () => { if (currentDocData) openRegisterForm(currentDocData); });
 
 async function renderContent() {
   if (!currentDocData) return;
-  await renderPaneContent('question-display-area', currentDocData.questionText, currentDocData.questionMaterials);
-  await renderPaneContent('answer-display-area', currentDocData.answerText, currentDocData.answerMaterials, "解答なし");
+  renderPaneContentForContainer(document.getElementById('question-display-area'), currentDocData.questionText, currentDocData.questionMaterials);
+  renderPaneContentForContainer(document.getElementById('answer-display-area'), currentDocData.answerText, currentDocData.answerMaterials, "解答解説はありません。");
 }
 
-async function renderPaneContent(containerId, textVal, materials) {
-  const area = document.getElementById(containerId); if (!area) return;
-  area.innerHTML = '';
-  if (textVal) { const d = document.createElement('div'); d.className = "content-text-box"; d.innerText = textVal; area.appendChild(d); }
-  if (materials) {
+function renderPaneContentForContainer(displayArea, textVal, materials, emptyMsg = "データはありません。") {
+  displayArea.innerHTML = '';
+  if (!textVal && (!materials || materials.length === 0)) {
+    displayArea.innerHTML = `<div class="text-center text-gray-400 py-10"><p class="text-xs">${emptyMsg}</p></div>`;
+    return;
+  }
+  if (textVal) {
+    const div = document.createElement('div');
+    div.className = "content-text-box";
+    div.innerText = textVal;
+    displayArea.appendChild(div);
+  }
+  if (materials && materials.length > 0) {
     materials.forEach(item => {
+      const container = document.createElement('div');
+      container.className = "custom-content-viewer border rounded-lg p-2 bg-white mt-2";
+      const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
       const img = document.createElement('img');
-      img.src = URL.createObjectURL(new Blob([base64ToArrayBuffer(LZString.decompressFromUTF16(item.data))]));
-      img.className = "content-image my-2"; area.appendChild(img);
+      img.src = URL.createObjectURL(new Blob([buffer]));
+      img.className = "content-image";
+      container.appendChild(img);
+      displayArea.appendChild(container);
     });
   }
 }
@@ -557,6 +678,9 @@ function base64ToArrayBuffer(base64) {
 
 function clearDocumentView() {
   selectedDocId = null; currentDocData = null;
-  const docTitle = document.getElementById('doc-title');
-  if (docTitle) docTitle.innerText = '左のリストから選択してください';
+  document.getElementById('doc-title').innerText = '左のリストから問題を選択してください';
+  document.getElementById('edit-current-btn').classList.add('hidden');
+  document.getElementById('toggle-answer-pane-btn').classList.add('hidden');
+  answerPane.classList.add('hidden');
+  document.getElementById('question-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>';
 }
