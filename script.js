@@ -109,7 +109,6 @@ function renderDocumentList(docs) {
   });
 }
 
-// 追加：問題集リスト描画関数
 function renderCollectionList(collections) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = collections.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
