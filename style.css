@@ -1,120 +1,37 @@
-/* カスタムスタイルシート */
-#sidebar.collapsed {
+/* サイドバー折りたたみ時の挙動 */
+aside.collapsed {
   width: 0px;
   overflow: hidden;
   border-right: none;
 }
 
-/* テキストおよびWordプレビュー用の共通スタイル */
+/* スクロールバーのカスタマイズ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* プレビュー内の画像やテキストボックスのスタイル */
 .content-text-box {
-  font-family: "Times New Roman", "MS Mincho", "Hiragino Mincho ProN", serif;
-  word-break: break-all;
-  overflow-wrap: break-word;
   white-space: pre-wrap;
-  line-height: 1.6;
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  font-size: 0.9rem;
-}
-
-.custom-content-viewer {
-  font-family: "Times New Roman", "MS Mincho", "Hiragino Mincho ProN", serif;
-  word-break: break-all;
-  overflow-wrap: break-word;
-  white-space: pre-wrap;
-  line-height: 1.6;
-}
-
-/* Word文書の用紙サイズ・背景を無視して画面幅に合わせる */
-.custom-content-viewer .docx-wrapper {
-  background: transparent !important;
-  padding: 0 !important;
-  display: block !important;
-  width: 100% !important;
-}
-
-.custom-content-viewer section.docx {
-  box-shadow: none !important;
-  margin: 0 !important;
-  padding: 10px !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
-}
-
-.custom-content-viewer p, 
-.custom-content-viewer span, 
-.custom-content-viewer div {
-  font-family: inherit !important;
-  word-break: break-all !important;
-  overflow-wrap: break-word !important;
-  max-width: 100% !important;
-}
-
-.custom-content-viewer ol {
-  list-style-type: decimal;
-  padding-left: 1.5em;
-}
-
-.custom-content-viewer ul {
-  list-style-type: disc;
-  padding-left: 1.5em;
+  word-break: break-word;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .content-image {
   max-width: 100%;
   height: auto;
-  display: block;
-  margin: 0 auto;
-  border-radius: 6px;
-}
-
-.pdf-page-canvas {
-  max-width: 100%;
-  height: auto !important;
-  display: block;
-  margin: 0 auto 10px auto;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border-radius: 4px;
-}
-
-/* 問題集並び替えカードのスタイル */
-.coll-sort-item {
-  transition: all 0.2s ease;
-}
-
-.coll-sort-item.dragging {
-  opacity: 0.4;
-  border-style: dashed;
-  border-color: #3b82f6;
-  background-color: #eff6ff;
-}
-
-.card-thumb-preview {
-  width: 50px;
-  height: 50px;
-  object-fit: cover;
-  border-radius: 4px;
-  border: 1px solid #cbd5e1;
-  background-color: #f8fafc;
-  flex-shrink: 0;
-}
-
-.card-text-fallback {
-  width: 50px;
-  height: 50px;
-  border-radius: 4px;
-  border: 1px solid #cbd5e1;
-  background-color: #f1f5f9;
-  color: #64748b;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 2px;
-  flex-shrink: 0;
-  line-height: 1.1;
-  overflow: hidden;
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
 }
