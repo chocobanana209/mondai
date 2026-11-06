@@ -11,7 +11,7 @@ export function renderTableList(tables) {
   tables.forEach(t => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-emerald-50 hover:bg-emerald-100 border-emerald-300 cursor-pointer text-xs transition space-y-2';
-    item.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold text-emerald-900 truncate">${t.title}</span><div class="flex gap-1"><button class="edit-table text-blue-600 font-bold">編集</button><button class="del-table text-red-500 font-bold">削除</button></div></div><div class="text-[10px] text-emerald-700">問題数: ${t.items ? t.items.length : 0}問</div><button class="start-exercise-btn w-full bg-emerald-600 text-white py-1.5 rounded font-bold">演習を始める 🎯</button>`;
+    item.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold text-emerald-900 truncate">${t.title}</span><div class="flex gap-1"><button class="edit-table text-blue-600 font-bold">編集</button><button class="del-table text-red-500 font-bold">削除</button></div></div><div class="text-[10px] text-emerald-700">教科: ${t.subject || '未設定'} | 問題数: ${t.items ? t.items.length : 0}問</div><button class="start-exercise-btn w-full bg-emerald-600 text-white py-1.5 rounded font-bold">演習を始める 🎯</button>`;
     item.querySelector('.start-exercise-btn').addEventListener('click', (e) => { e.stopPropagation(); openTableConfigModal(t); });
     item.querySelector('.edit-table').addEventListener('click', (e) => { e.stopPropagation(); openTableRegisterForm(t); });
     item.querySelector('.del-table').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "questionTables", t.id)); });
@@ -50,6 +50,7 @@ document.getElementById('start-table-exercise-btn').addEventListener('click', ()
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.add('hidden');
+  document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.remove('hidden');
@@ -93,7 +94,6 @@ function renderTableExerciseCurrentItem() {
     choicesArea.classList.remove('hidden');
     choicesArea.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-1">選択肢：</div>`;
     
-    // 正解をカンマ区切りで複数取得し、ランダムに1つ代表を選ぶか、複数正解に対応させる
     const correctList = (item.answer || "").split(',').map(s => s.trim()).filter(Boolean);
     const primaryCorrect = correctList.length > 0 ? correctList[0] : "";
     const wrongList = item.wrongChoices.split(',').map(s => s.trim()).filter(Boolean);
@@ -111,7 +111,6 @@ function renderTableExerciseCurrentItem() {
       btn.innerHTML = `<span class="font-bold text-blue-600">${idx + 1}.</span> <span>${ch.text}</span> ${ch.img ? `<img src="${ch.img}" class="max-h-12 ml-auto rounded"/>` : ''}`;
       btn.onclick = () => {
         grid.querySelectorAll('button').forEach(b => b.disabled = true);
-        // 複数正解のいずれかに含まれているか判定
         const isMatched = correctList.some(c => c === ch.text);
         if (isMatched) {
           btn.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
@@ -145,6 +144,7 @@ document.getElementById('t-ex-show-ans-btn').addEventListener('click', () => {
 document.getElementById('t-ex-correct-btn').addEventListener('click', () => {
   const item = exerciseQueue[currentExerciseIndex];
   localStorage.setItem(`qa_hist_${activeTableData.id}_${item.id}`, 'correct');
+  localStorage.removeItem(`qa_mistake_time_${activeTableData.id}_${item.id}`);
   currentExerciseIndex++;
   renderTableExerciseCurrentItem();
 });
@@ -152,6 +152,7 @@ document.getElementById('t-ex-correct-btn').addEventListener('click', () => {
 document.getElementById('t-ex-incorrect-btn').addEventListener('click', () => {
   const item = exerciseQueue[currentExerciseIndex];
   localStorage.setItem(`qa_hist_${activeTableData.id}_${item.id}`, 'incorrect');
+  localStorage.setItem(`qa_mistake_time_${activeTableData.id}_${item.id}`, Date.now());
   if (!retryQueue.includes(item)) retryQueue.push(item);
   currentExerciseIndex++;
   renderTableExerciseCurrentItem();
@@ -171,6 +172,7 @@ function openTableRegisterForm(tableData = null) {
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.add('hidden');
+  document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('kanji-register-form-container').classList.add('hidden');
@@ -178,6 +180,7 @@ function openTableRegisterForm(tableData = null) {
 
   document.getElementById('editing-table-id').value = tableData ? tableData.id : '';
   document.getElementById('table-name-input').value = tableData ? tableData.title : '';
+  document.getElementById('table-subject-input').value = tableData ? (tableData.subject || "") : "";
   document.getElementById('table-importances-input').value = tableData && tableData.importances ? tableData.importances.join(', ') : "高, 中, 低";
   renderTableRows(tableData ? tableData.items || [] : [createEmptyRowItem()]);
 }
@@ -221,7 +224,6 @@ function renderTableRows(items) {
       <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
     `;
 
-    // 💡 スムーズなドラッグ＆ドロップ処理の適用
     const handle = wrapper.querySelector('.drag-handle');
     handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
     handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
@@ -293,7 +295,6 @@ document.getElementById('add-qa-row-btn').addEventListener('click', () => {
     <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
   `;
 
-  // 新規追加行にも同様のドラッグ機能を付与
   const handle = wrapper.querySelector('.drag-handle');
   handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
   handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
@@ -326,12 +327,13 @@ document.getElementById('add-qa-row-btn').addEventListener('click', () => {
   wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.choiceImgData, 'choice'));
   wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
   tbody.appendChild(wrapper);
-}
+});
 
 document.getElementById('save-table-doc-btn').addEventListener('click', async () => {
   if (!currentUser) return;
   const title = document.getElementById('table-name-input').value.trim();
   if (!title) { alert("タイトルを入力してください。"); return; }
+  const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
 
   const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
   const items = [];
@@ -358,7 +360,7 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   });
 
   const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
-  await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, importances, items, updatedAt: Date.now() }, { merge: true });
+  await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, importances, items, updatedAt: Date.now() }, { merge: true });
   alert("一問一答表を保存しました！"); closeTableRegisterForm();
 });
 
