@@ -61,7 +61,7 @@ function createEmptyKanjiPassageItem() {
   };
 }
 
-// 💡 無駄に縦長にならないよう、最小・最大高さを制御する自動調整関数
+// テキストエリアの高さを自動調整する関数
 function autoResizeTextarea(textarea) {
   textarea.style.height = 'auto';
   const newHeight = Math.min(Math.max(textarea.scrollHeight + 4, 60), 300);
@@ -101,7 +101,7 @@ function renderKanjiTableRows(passages) {
       tr.innerHTML = `
         ${leftCellsHtml}
         <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-word-input" placeholder="傍線部(漢字)" value="${sub.targetWord || ''}"/></td>
-        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(ひらがな)" value="${sub.reading || ''}"/></td>
+        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(例:こうりょ,おもんぱかり)" value="${sub.reading || ''}"/></td>
         <td class="p-2 text-center">
           <select class="w-full border rounded p-1 kanji-dir-select bg-white">
             <option value="読み書き" ${sub.direction === '読み書き' ? 'selected' : ''}>読み書き</option>
@@ -302,6 +302,7 @@ function renderKanjiExerciseCurrentItem() {
   const hasMultiple = passageItem.subItems && passageItem.subItems.length > 1;
 
   passageItem.resolvedDirections = passageItem.resolvedDirections || {};
+  passageItem.resolvedReadings = passageItem.resolvedReadings || {};
 
   if (passageItem.subItems) {
     const processedWords = new Set();
@@ -314,6 +315,11 @@ function renderKanjiExerciseCurrentItem() {
         }
         passageItem.resolvedDirections[sub.id] = currentDir;
 
+        // 💡 カンマ区切りの読みの中からランダムに1つを選択して保持
+        const readingsArray = (sub.reading || "").split(',').map(s => s.trim()).filter(Boolean);
+        const chosenReading = readingsArray.length > 0 ? readingsArray[Math.floor(Math.random() * readingsArray.length)] : sub.targetWord;
+        passageItem.resolvedReadings[sub.id] = chosenReading;
+
         const escapedWord = sub.targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(escapedWord, 'g');
 
@@ -324,14 +330,14 @@ function renderKanjiExerciseCurrentItem() {
             processedWords.add(sub.targetWord);
             let displayWord = sub.targetWord;
             if (currentDir === '書き') {
-              displayWord = hiraganaToKatakana(sub.reading || sub.targetWord);
+              displayWord = hiraganaToKatakana(chosenReading);
             }
             const badge = hasMultiple ? `(${idx + 1})` : '';
             return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
           } else {
             let repeatWord = sub.targetWord;
             if (currentDir === '書き') {
-              repeatWord = hiraganaToKatakana(sub.reading || sub.targetWord);
+              repeatWord = hiraganaToKatakana(chosenReading);
             }
             return repeatWord;
           }
@@ -351,9 +357,11 @@ function renderKanjiExerciseCurrentItem() {
   passageItem.subItems.forEach((sub, idx) => {
     const subId = sub.id;
     const resolvedDir = passageItem.resolvedDirections[subId] || '読み';
-    let ansText = resolvedDir === '読み' ? sub.reading : sub.targetWord;
+    const chosenReading = passageItem.resolvedReadings[subId] || sub.reading || sub.targetWord;
+    
+    let ansText = resolvedDir === '読み' ? (sub.reading || sub.targetWord) : sub.targetWord;
     if (resolvedDir === '書き') {
-      ansText = hiraganaToKatakana(sub.reading || sub.targetWord);
+      ansText = hiraganaToKatakana(chosenReading);
     }
 
     const ansTypeStr = resolvedDir === '読み' ? 'ひらがな' : 'カタカナ';
