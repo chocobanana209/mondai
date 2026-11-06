@@ -52,6 +52,7 @@ document.getElementById('start-table-exercise-btn').addEventListener('click', ()
   document.getElementById('kanji-player-container').classList.add('hidden');
   document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('timeline-register-form-container').classList.add('hidden');
+  document.getElementById('kanji-register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.remove('hidden');
   document.getElementById('table-exercise-content').classList.remove('hidden');
@@ -164,8 +165,15 @@ document.getElementById('exit-table-player-btn').addEventListener('click', () =>
   document.getElementById('view-mode-container').classList.remove('hidden');
 });
 
-document.getElementById('btn-nav-table-register').addEventListener('click', () => openTableRegisterForm(null));
-document.getElementById('cancel-table-register-btn').addEventListener('click', closeTableRegisterForm);
+const btnNavTableReg = document.getElementById('btn-nav-table-register');
+if (btnNavTableReg) {
+  btnNavTableReg.addEventListener('click', () => openTableRegisterForm(null));
+}
+
+const cancelTableRegBtn = document.getElementById('cancel-table-register-btn');
+if (cancelTableRegBtn) {
+  cancelTableRegBtn.addEventListener('click', closeTableRegisterForm);
+}
 
 function openTableRegisterForm(tableData = null) {
   document.getElementById('view-mode-container').classList.add('hidden');
@@ -174,7 +182,6 @@ function openTableRegisterForm(tableData = null) {
   document.getElementById('kanji-player-container').classList.add('hidden');
   document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('timeline-register-form-container').classList.add('hidden');
-  document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('kanji-register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.remove('hidden');
 
@@ -267,102 +274,108 @@ function reindexTableRows() {
   });
 }
 
-document.getElementById('add-qa-row-btn').addEventListener('click', () => {
-  const tbody = document.getElementById('qa-table-tbody'); if (!tbody) return;
-  const importancesInput = document.getElementById('table-importances-input');
-  const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
-  let defaultExp = "";
-  if (tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
+const addQaRowBtn = document.getElementById('add-qa-row-btn');
+if (addQaRowBtn) {
+  addQaRowBtn.addEventListener('click', () => {
+    const tbody = document.getElementById('qa-table-tbody'); if (!tbody) return;
+    const importancesInput = document.getElementById('table-importances-input');
+    const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
+    let defaultExp = "";
+    if (tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
 
-  const newItemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const wrapper = document.createElement('tr'); 
-  wrapper.className = "border-b"; 
-  wrapper.dataset.itemId = newItemId; 
-  wrapper.dataset.imgData = "";
-  wrapper.dataset.choiceImgData = "";
+    const newItemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const wrapper = document.createElement('tr'); 
+    wrapper.className = "border-b"; 
+    wrapper.dataset.itemId = newItemId; 
+    wrapper.dataset.imgData = "";
+    wrapper.dataset.choiceImgData = "";
 
-  wrapper.innerHTML = `
-    <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
-    <td class="p-2 text-center font-bold text-gray-500 row-index">${tbody.children.length + 1}</td>
-    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題..."></textarea></td>
-    <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
-    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答(複数可:カンマ区切り)"></textarea></td>
-    <td class="p-2 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" title="選択肢形式にする"/></td>
-    <td class="p-2"><input type="text" class="w-full border rounded p-1 row-wrong" placeholder="誤答をカンマ区切り"/></td>
-    <td class="p-2 text-center"><button type="button" class="row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
-    <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}">${i}</option>`).join('')}</select></td>
-    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${defaultExp}</textarea></td>
-    <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
-  `;
+    wrapper.innerHTML = `
+      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
+      <td class="p-2 text-center font-bold text-gray-500 row-index">${tbody.children.length + 1}</td>
+      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題..."></textarea></td>
+      <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
+      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答(複数可:カンマ区切り)"></textarea></td>
+      <td class="p-2 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" title="選択肢形式にする"/></td>
+      <td class="p-2"><input type="text" class="w-full border rounded p-1 row-wrong" placeholder="誤答をカンマ区切り"/></td>
+      <td class="p-2 text-center"><button type="button" class="row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
+      <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}">${i}</option>`).join('')}</select></td>
+      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${defaultExp}</textarea></td>
+      <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
+    `;
 
-  const handle = wrapper.querySelector('.drag-handle');
-  handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
-  handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
-  wrapper.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('text/plain', newItemId);
-    wrapper.classList.add('opacity-40');
-  });
-  wrapper.addEventListener('dragend', () => {
-    wrapper.classList.remove('opacity-40');
-    wrapper.removeAttribute('draggable');
-  });
-  wrapper.addEventListener('dragover', (e) => e.preventDefault());
-  wrapper.addEventListener('drop', (e) => {
-    e.preventDefault();
-    const draggingRow = tbody.querySelector('.opacity-40');
-    if (draggingRow && draggingRow !== wrapper) {
-      const allRows = Array.from(tbody.querySelectorAll('tr'));
-      const draggedIdx = allRows.indexOf(draggingRow);
-      const targetIdx = allRows.indexOf(wrapper);
-      if (draggedIdx < targetIdx) {
-        tbody.insertBefore(draggingRow, wrapper.nextSibling);
-      } else {
-        tbody.insertBefore(draggingRow, wrapper);
+    const handle = wrapper.querySelector('.drag-handle');
+    handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
+    handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
+    wrapper.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', newItemId);
+      wrapper.classList.add('opacity-40');
+    });
+    wrapper.addEventListener('dragend', () => {
+      wrapper.classList.remove('opacity-40');
+      wrapper.removeAttribute('draggable');
+    });
+    wrapper.addEventListener('dragover', (e) => e.preventDefault());
+    wrapper.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const draggingRow = tbody.querySelector('.opacity-40');
+      if (draggingRow && draggingRow !== wrapper) {
+        const allRows = Array.from(tbody.querySelectorAll('tr'));
+        const draggedIdx = allRows.indexOf(draggingRow);
+        const targetIdx = allRows.indexOf(wrapper);
+        if (draggedIdx < targetIdx) {
+          tbody.insertBefore(draggingRow, wrapper.nextSibling);
+        } else {
+          tbody.insertBefore(draggingRow, wrapper);
+        }
+        reindexTableRows();
       }
-      reindexTableRows();
-    }
+    });
+
+    wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.imgData, 'question'));
+    wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.choiceImgData, 'choice'));
+    wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
+    tbody.appendChild(wrapper);
   });
+}
 
-  wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.imgData, 'question'));
-  wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.choiceImgData, 'choice'));
-  wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
-  tbody.appendChild(wrapper);
-});
+const saveTableDocBtn = document.getElementById('save-table-doc-btn');
+if (saveTableDocBtn) {
+  saveTableDocBtn.addEventListener('click', async () => {
+    if (!currentUser) return;
+    const title = document.getElementById('table-name-input').value.trim();
+    if (!title) { alert("タイトルを入力してください。"); return; }
+    const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
 
-document.getElementById('save-table-doc-btn').addEventListener('click', async () => {
-  if (!currentUser) return;
-  const title = document.getElementById('table-name-input').value.trim();
-  if (!title) { alert("タイトルを入力してください。"); return; }
-  const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
+    const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
+    const items = [];
+    document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
+      const qArea = tr.querySelector('.row-q');
+      const aArea = tr.querySelector('.row-a');
+      const chkBox = tr.querySelector('.row-choice-chk');
+      const wrongInput = tr.querySelector('.row-wrong');
+      const impArea = tr.querySelector('.row-imp');
+      const expArea = tr.querySelector('.row-exp');
+      if (qArea) {
+        items.push({
+          id: tr.dataset.itemId,
+          question: qArea.value.trim(),
+          questionImage: tr.dataset.imgData || "",
+          answer: aArea ? aArea.value.trim() : "",
+          isChoiceMode: chkBox ? chkBox.checked : false,
+          wrongChoices: wrongInput ? wrongInput.value.trim() : "",
+          choiceImage: tr.dataset.choiceImgData || "",
+          importance: impArea ? impArea.value : "中",
+          explanation: expArea ? expArea.value.trim() : ""
+        });
+      }
+    });
 
-  const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
-  const items = [];
-  document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
-    const qArea = tr.querySelector('.row-q');
-    const aArea = tr.querySelector('.row-a');
-    const chkBox = tr.querySelector('.row-choice-chk');
-    const wrongInput = tr.querySelector('.row-wrong');
-    const impArea = tr.querySelector('.row-imp');
-    const expArea = tr.querySelector('.row-exp');
-    if (qArea) {
-      items.push({
-        id: tr.dataset.itemId,
-        question: qArea.value.trim(),
-        questionImage: tr.dataset.imgData || "",
-        answer: aArea ? aArea.value.trim() : "",
-        isChoiceMode: chkBox ? chkBox.checked : false,
-        wrongChoices: wrongInput ? wrongInput.value.trim() : "",
-        choiceImage: tr.dataset.choiceImgData || "",
-        importance: impArea ? impArea.value : "中",
-        explanation: expArea ? expArea.value.trim() : ""
-      });
-    }
+    const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
+    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, importances, items, updatedAt: Date.now() }, { merge: true });
+    alert("一問一答表を保存しました！"); closeTableRegisterForm();
   });
-
-  const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
-  await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, importances, items, updatedAt: Date.now() }, { merge: true });
-  alert("一問一答表を保存しました！"); closeTableRegisterForm();
-});
+}
 
 function openQaImageModal(rowId, imgData, type = 'question') {
   activeModalRowId = rowId;
@@ -380,51 +393,62 @@ function openQaImageModal(rowId, imgData, type = 'question') {
   document.getElementById('qa-image-modal').classList.remove('hidden');
 }
 
-document.getElementById('close-qa-img-modal').addEventListener('click', () => document.getElementById('qa-image-modal').classList.add('hidden'));
-document.getElementById('qa-img-remove-btn').addEventListener('click', () => {
-  const tr = document.querySelector(`tr[data-item-id="${activeModalRowId}"]`);
-  if (tr) {
-    if (activeModalType === 'choice') {
-      tr.dataset.choiceImgData = "";
-      const btn = tr.querySelector('.row-choice-img-btn');
-      if (btn) { btn.className = "row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700"; btn.innerText = "画像追加"; }
-    } else {
-      tr.dataset.imgData = "";
-      const btn = tr.querySelector('.row-img-btn');
-      if (btn) { btn.className = "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700"; btn.innerText = "画像追加"; }
-    }
-  }
-  document.getElementById('qa-image-modal').classList.add('hidden');
-});
+const closeQaImgModal = document.getElementById('close-qa-img-modal');
+if (closeQaImgModal) closeQaImgModal.addEventListener('click', () => document.getElementById('qa-image-modal').classList.add('hidden'));
 
-document.getElementById('qa-modal-file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (uploadEvent) => {
-    const base64 = uploadEvent.target.result;
-    document.getElementById('qa-modal-img-preview').innerHTML = `<img src="${base64}" class="max-h-32 mx-auto rounded"/>`;
+const qaImgRemoveBtn = document.getElementById('qa-img-remove-btn');
+if (qaImgRemoveBtn) {
+  qaImgRemoveBtn.addEventListener('click', () => {
     const tr = document.querySelector(`tr[data-item-id="${activeModalRowId}"]`);
     if (tr) {
-      if (activeModalType === 'choice') tr.dataset.choiceImgData = base64;
-      else tr.dataset.imgData = base64;
+      if (activeModalType === 'choice') {
+        tr.dataset.choiceImgData = "";
+        const btn = tr.querySelector('.row-choice-img-btn');
+        if (btn) { btn.className = "row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700"; btn.innerText = "画像追加"; }
+      } else {
+        tr.dataset.imgData = "";
+        const btn = tr.querySelector('.row-img-btn');
+        if (btn) { btn.className = "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700"; btn.innerText = "画像追加"; }
+      }
     }
-  };
-  reader.readAsDataURL(file);
-});
+    document.getElementById('qa-image-modal').classList.add('hidden');
+  });
+}
 
-document.getElementById('qa-img-save-btn').addEventListener('click', () => {
-  const tr = document.querySelector(`tr[data-item-id="${activeModalRowId}"]`);
-  if (tr) {
-    if (activeModalType === 'choice') {
-      const hasImg = (tr.dataset.choiceImgData || "").length > 0;
-      const btn = tr.querySelector('.row-choice-img-btn');
-      if (btn) { btn.className = `row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; btn.innerText = hasImg ? '画像付(変)' : '画像追加'; }
-    } else {
-      const hasImg = (tr.dataset.imgData || "").length > 0;
-      const btn = tr.querySelector('.row-img-btn');
-      if (btn) { btn.className = `row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; btn.innerText = hasImg ? '画像付(変)' : '画像追加'; }
+const qaModalFileInput = document.getElementById('qa-modal-file-input');
+if (qaModalFileInput) {
+  qaModalFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const base64 = uploadEvent.target.result;
+      document.getElementById('qa-modal-img-preview').innerHTML = `<img src="${base64}" class="max-h-32 mx-auto rounded"/>`;
+      const tr = document.querySelector(`tr[data-item-id="${activeModalRowId}"]`);
+      if (tr) {
+        if (activeModalType === 'choice') tr.dataset.choiceImgData = base64;
+        else tr.dataset.imgData = base64;
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+const qaImgSaveBtn = document.getElementById('qa-img-save-btn');
+if (qaImgSaveBtn) {
+  qaImgSaveBtn.addEventListener('click', () => {
+    const tr = document.querySelector(`tr[data-item-id="${activeModalRowId}"]`);
+    if (tr) {
+      if (activeModalType === 'choice') {
+        const hasImg = (tr.dataset.choiceImgData || "").length > 0;
+        const btn = tr.querySelector('.row-choice-img-btn');
+        if (btn) { btn.className = `row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; btn.innerText = hasImg ? '画像付(変)' : '画像追加'; }
+      } else {
+        const hasImg = (tr.dataset.imgData || "").length > 0;
+        const btn = tr.querySelector('.row-img-btn');
+        if (btn) { btn.className = `row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; btn.innerText = hasImg ? '画像付(変)' : '画像追加'; }
+      }
     }
-  }
-  document.getElementById('qa-image-modal').classList.add('hidden');
-});
+    document.getElementById('qa-image-modal').classList.add('hidden');
+  });
+}
