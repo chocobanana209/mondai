@@ -443,7 +443,12 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
 
 
 
-// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック (レイアウト完全修復版) ---
+
+
+
+
+
+// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -513,7 +518,6 @@ function renderKanjiTableRows(passages) {
       tr.dataset.passageId = passage.id;
       tr.dataset.subId = sub.id;
 
-      // 7列の構造に完全に一致させるため、各セルを確実に順番通りに配置します
       let leftCellsHtml = '';
       if (sIndex === 0) {
         leftCellsHtml = `
@@ -561,7 +565,6 @@ function renderKanjiTableRows(passages) {
       tbody.appendChild(tr);
     });
 
-    // 傍線追加ボタン行（colspan="7" でテーブルの全7列にきれいに収めます）
     const addRowTr = document.createElement('tr');
     addRowTr.className = "bg-amber-50/50 border-b";
     addRowTr.innerHTML = `
@@ -723,35 +726,42 @@ function renderKanjiExerciseCurrentItem() {
   const hasMultiple = passageItem.subItems && passageItem.subItems.length > 1;
 
   if (passageItem.subItems) {
-    const seenWords = new Set();
+    const processedWords = new Set();
 
     passageItem.subItems.forEach((sub, idx) => {
       if (sub.targetWord) {
         const escapedWord = sub.targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(escapedWord, 'g');
 
-        if (!seenWords.has(sub.targetWord)) {
-          seenWords.add(sub.targetWord);
-          
-          let displayWord = sub.targetWord;
-          if (sub.direction === '書き') {
-            displayWord = hiraganaToKatakana(sub.reading || sub.targetWord);
-          }
-          const badge = hasMultiple ? `(${idx + 1})` : '';
-          
-          let matchCount = 0;
-          formattedPassage = formattedPassage.replace(regex, (match) => {
-            matchCount++;
-            if (matchCount === 1) {
-              return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
+        let matchCount = 0;
+        formattedPassage = formattedPassage.replace(regex, (match) => {
+          matchCount++;
+          if (matchCount === 1 && !processedWords.has(sub.targetWord)) {
+            // 1回目の出現：傍線部 ＆ 太字ゴシック ＆ 番号付き
+            processedWords.add(sub.targetWord);
+            let displayWord = sub.targetWord;
+            if (sub.direction === '書き') {
+              displayWord = hiraganaToKatakana(sub.reading || sub.targetWord);
             }
-            return match;
-          });
-        }
+            const badge = hasMultiple ? `(${idx + 1})` : '';
+            return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
+          } else {
+            // 2回目以降の出現：下線や太字にせず、書き問題ならカタカナにしてそのまま表示
+            let repeatWord = sub.targetWord;
+            if (sub.direction === '書き') {
+              repeatWord = hiraganaToKatakana(sub.reading || sub.targetWord);
+            }
+            return repeatWord;
+          }
+        });
       }
     });
   }
-  document.getElementById('kanji-ex-passage').innerHTML = formattedPassage;
+
+  // 💡 全体を明朝体 (font-serif) に設定し、傍線部だけをゴシックにする
+  const passageContainer = document.getElementById('kanji-ex-passage');
+  passageContainer.className = "text-base font-serif text-slate-900 leading-relaxed p-4 bg-white border rounded-lg kanji-passage-box";
+  passageContainer.innerHTML = formattedPassage;
 
   const ansArea = document.getElementById('kanji-ex-answer-area');
   ansArea.innerHTML = `<div class="text-xs font-bold text-emerald-700 mb-2">💡 解答と個別正誤判定：</div>`;
