@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>問題・解答学習Viewer (完全統合版)</title>
+  <title>問題・解答学習Viewer (漢字・一問一答統合版)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/jszip/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.1.15/dist/docx-preview.min.js"></script>
@@ -38,14 +38,16 @@
   <div class="flex-1 flex relative overflow-hidden">
     <aside id="sidebar" class="w-80 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 z-10 absolute md:relative h-full">
       <div class="p-3 border-b border-slate-200 space-y-2">
-        <div class="flex gap-1">
-          <button id="btn-nav-register" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-2 rounded-lg text-[11px] transition shadow-sm">+ 通常問題</button>
-          <button id="btn-nav-table-register" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-2 rounded-lg text-[11px] transition shadow-sm">+ 一問一答表</button>
+        <div class="grid grid-cols-3 gap-1">
+          <button id="btn-nav-register" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-1 rounded-lg text-[10px] transition shadow-sm">+ 通常</button>
+          <button id="btn-nav-table-register" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-1 rounded-lg text-[10px] transition shadow-sm">+ 一問</button>
+          <button id="btn-nav-kanji-register" class="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-1 rounded-lg text-[10px] transition shadow-sm">+ 漢字</button>
         </div>
         <div class="flex bg-slate-100 p-1 rounded-lg text-xs">
-          <button id="nav-docs" class="flex-1 py-1.5 font-bold text-blue-600 bg-white rounded shadow-sm">問題一覧</button>
-          <button id="nav-collections" class="flex-1 py-1.5 font-medium text-gray-500 hover:text-gray-700">問題集</button>
-          <button id="nav-tables" class="flex-1 py-1.5 font-medium text-gray-500 hover:text-gray-700">一問一答</button>
+          <button id="nav-docs" class="flex-1 py-1 font-bold text-blue-600 bg-white rounded shadow-sm text-[11px]">問題</button>
+          <button id="nav-collections" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">問題集</button>
+          <button id="nav-tables" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">一問</button>
+          <button id="nav-kanji" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">漢字</button>
         </div>
         <div class="flex gap-1">
           <input type="text" id="search-input" placeholder="検索..." class="w-full text-xs border border-slate-300 rounded p-1.5 focus:outline-none focus:border-blue-500"/>
@@ -151,6 +153,45 @@
         </div>
       </div>
 
+      <!-- 3-2. 漢字問題 演習ビュー -->
+      <div id="kanji-player-container" class="hidden flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden max-w-3xl mx-auto w-full p-6 space-y-6">
+        <div class="flex justify-between items-center border-b pb-3">
+          <h2 id="kanji-player-title" class="text-base font-bold text-slate-800">漢字問題 演習</h2>
+          <button id="exit-kanji-player-btn" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded font-bold">演習を終了</button>
+        </div>
+        <div id="kanji-exercise-content" class="space-y-4 hidden flex-1 flex flex-col">
+          <div class="flex justify-between text-xs font-bold text-slate-500">
+            <span id="kanji-progress-count">問題 1 / 10</span>
+            <span id="kanji-loop-badge" class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded">通常周回</span>
+          </div>
+          <div class="p-6 bg-slate-50 border rounded-xl space-y-4">
+            <div class="text-xs font-bold text-amber-700 flex justify-between">
+              <span>【文章問題】 (<span id="kanji-dir-label">読み</span>)</span>
+            </div>
+            <!-- 傍線部が太字ゴシック下線でスタイリングされる文章エリア -->
+            <div id="kanji-ex-passage" class="text-base font-medium text-slate-900 leading-relaxed p-4 bg-white border rounded-lg kanji-passage-box"></div>
+          </div>
+
+          <div id="kanji-ex-answer-area" class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 hidden">
+            <div class="text-xs font-bold text-emerald-700">解答 (<span id="kanji-ans-type-label">ひらがな</span>)：</div>
+            <div id="kanji-ex-answer" class="text-lg font-bold text-slate-900">解答テキスト</div>
+          </div>
+
+          <div class="mt-auto pt-4 flex gap-3">
+            <button id="kanji-ex-show-ans-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm transition">答えを見る</button>
+            <div id="kanji-ex-grade-buttons" class="w-full grid grid-cols-2 gap-3 hidden">
+              <button id="kanji-ex-correct-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg text-sm transition">⭕ 正解</button>
+              <button id="kanji-ex-incorrect-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg text-sm transition">❌ 誤答 (リトライ)</button>
+            </div>
+          </div>
+        </div>
+        <div id="kanji-exercise-result" class="text-center py-20 space-y-4 hidden">
+          <h3 class="text-xl font-bold text-slate-800">🎉 漢字問題 演習完了！</h3>
+          <p id="kanji-result-summary" class="text-xs text-slate-600"></p>
+          <button id="restart-kanji-ex-btn" class="bg-amber-600 text-white px-4 py-2 rounded text-xs font-bold">もう一度演習する</button>
+        </div>
+      </div>
+
       <!-- 4. 通常問題 登録・編集フォーム -->
       <div id="register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-4xl mx-auto w-full">
         <div class="flex justify-between items-center border-b pb-3">
@@ -215,6 +256,37 @@
         <button type="button" id="add-qa-row-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 rounded text-xs">+ 行を追加する</button>
         <button id="save-table-doc-btn" class="w-full bg-emerald-600 text-white font-bold py-2.5 rounded text-xs shadow-sm">一問一答表を保存する</button>
       </div>
+
+      <!-- 6. 漢字問題 登録・編集エディタ画面 (セル結合風表示対応) -->
+      <div id="kanji-register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-5xl mx-auto w-full">
+        <div class="flex justify-between items-center border-b pb-3">
+          <h2 id="kanji-form-header-title" class="text-base font-bold text-slate-800">漢字問題 表形式の作成・編集</h2>
+          <button id="cancel-kanji-register-btn" class="text-xs text-slate-500">キャンセル</button>
+        </div>
+        <input type="hidden" id="editing-kanji-id" value="">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label class="block text-xs font-semibold text-gray-700 mb-1">漢字テストのタイトル</label><input type="text" id="kanji-name-input" class="w-full text-xs border rounded p-2" placeholder="例: 中学国語 常用漢字テスト"/></div>
+        </div>
+        <div class="border rounded-lg overflow-x-auto bg-slate-50 p-2">
+          <table class="w-full text-xs text-left border-collapse" id="kanji-spread-table">
+            <thead>
+              <tr class="bg-amber-100 text-amber-900 border-b">
+                <th class="p-2 w-12 text-center">並び替え</th>
+                <th class="p-2 w-10 text-center">#</th>
+                <th class="p-2 w-1/3">A列: 文章 (複数傍線対応)</th>
+                <th class="p-2 w-1/5">B列: 傍線部(漢字)</th>
+                <th class="p-2 w-1/5">C列: 読み仮名</th>
+                <th class="p-2 w-28 text-center">D列: 出題方向</th>
+                <th class="p-2 w-12 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="kanji-table-tbody" class="space-y-1"></tbody>
+          </table>
+        </div>
+        <button type="button" id="add-kanji-row-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 rounded text-xs">+ 文章行を追加する</button>
+        <button id="save-kanji-doc-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded text-xs shadow-sm">漢字問題表を保存する</button>
+      </div>
+
     </main>
   </div>
 
@@ -266,6 +338,19 @@
         <div><label class="block font-semibold mb-1">問題数</label><input type="number" id="config-limit-input" value="10" class="w-full border rounded p-2"/></div>
       </div>
       <button id="start-table-exercise-btn" class="w-full bg-emerald-600 text-white font-bold py-2.5 rounded text-xs">演習を開始する 🚀</button>
+    </div>
+  </div>
+
+  <!-- 漢字 演習設定モーダル -->
+  <div id="kanji-config-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-6 space-y-4">
+      <div class="flex justify-between items-center border-b pb-2"><h3 class="font-bold text-slate-800 text-sm">漢字問題 演習設定</h3><button id="close-kanji-config-modal" class="font-bold">✕</button></div>
+      <div class="space-y-3 text-xs">
+        <div><label class="block font-semibold mb-1">出題順序</label><select id="kanji-config-order-select" class="w-full border rounded p-2"><option value="sequential">順番通り</option><option value="random">ランダム</option></select></div>
+        <div><label class="block font-semibold mb-1">範囲</label><select id="kanji-config-scope-select" class="w-full border rounded p-2"><option value="all">全問対象</option><option value="mistaken">間違えた問題のみ</option></select></div>
+        <div><label class="block font-semibold mb-1">出題形式の絞り込み</label><select id="kanji-config-dir-select" class="w-full border rounded p-2"><option value="all">すべて (読み/書き)</option><option value="読み">読み のみ</option><option value="書き">書き のみ</option></select></div>
+      </div>
+      <button id="start-kanji-exercise-btn" class="w-full bg-amber-600 text-white font-bold py-2.5 rounded text-xs">漢字演習を開始する 🚀</button>
     </div>
   </div>
 
