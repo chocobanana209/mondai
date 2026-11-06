@@ -89,7 +89,7 @@ function renderKanjiTableRows(passages) {
       let leftCellsHtml = '';
       if (sIndex === 0) {
         leftCellsHtml = `
-          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
+          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle select-none" title="ドラッグして移動" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
           <td class="p-2 align-middle" rowspan="${subItems.length}">
             <textarea class="w-full border rounded p-2 kanji-passage-input font-serif leading-relaxed resize-none min-h-[60px] max-h-[300px]" placeholder="文章全体を入力...">${passage.passageText || ''}</textarea>
@@ -122,13 +122,21 @@ function renderKanjiTableRows(passages) {
 
         const handle = tr.querySelector('.drag-handle');
         if (handle) {
-          let draggedTr = null;
-          handle.addEventListener('dragstart', (e) => { draggedTr = tr; tr.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
-          handle.addEventListener('dragend', () => { tr.classList.remove('opacity-40'); draggedTr = null; });
+          handle.addEventListener('mousedown', () => tr.setAttribute('draggable', 'true'));
+          handle.addEventListener('mouseup', () => tr.removeAttribute('draggable'));
+          tr.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', passage.id);
+            tr.classList.add('opacity-40');
+          });
+          tr.addEventListener('dragend', () => {
+            tr.classList.remove('opacity-40');
+            tr.removeAttribute('draggable');
+          });
           tr.addEventListener('dragover', (e) => e.preventDefault());
           tr.addEventListener('drop', (e) => {
             e.preventDefault();
-            if (draggedTr && draggedTr !== tr) {
+            const draggingTr = tbody.querySelector('.opacity-40');
+            if (draggingTr && draggingTr !== tr) {
               const currentPassages = collectCurrentKanjiPassages();
               renderKanjiTableRows(currentPassages);
             }
