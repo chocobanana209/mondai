@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { renderTableList } from "./keywords.js";
 import { renderKanjiTableList } from "./kanji.js";
 import { renderTimelineList } from "./timeline.js";
@@ -57,7 +57,7 @@ function updateAuthUI(user) {
 document.getElementById('login-btn').addEventListener('click', () => signInWithPopup(auth, new GoogleAuthProvider()));
 document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
 
-// 💡 サイドバー（メニューバー）の開閉トグル
+// サイドバー（メニューバー）の開閉トグル
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const sidebar = document.getElementById('sidebar');
 if (toggleSidebarBtn && sidebar) {
@@ -87,20 +87,51 @@ function setActiveNavTab(tabId) {
 function setupRealtimeListeners() {
   detachRealtimeListeners();
   if (!currentUser) return;
+  
+  // ゴミ箱（isDeleted）に入っていないデータだけをリアルタイム取得
   onSnapshot(query(collection(db, "users", currentUser.uid, "documents"), orderBy("updatedAt", "desc")), snap => {
-    allDocuments = []; snap.forEach(d => allDocuments.push({ id: d.id, ...d.data() })); if (currentMainView === 'documents') renderCurrentView();
+    allDocuments = []; 
+    snap.forEach(d => {
+      const data = d.data();
+      if (!data.isDeleted) allDocuments.push({ id: d.id, ...data });
+    }); 
+    if (currentMainView === 'documents') renderCurrentView();
   });
+
   onSnapshot(query(collection(db, "users", currentUser.uid, "collections"), orderBy("updatedAt", "desc")), snap => {
-    allCollections = []; snap.forEach(d => allCollections.push({ id: d.id, ...d.data() })); if (currentMainView === 'collections') renderCurrentView();
+    allCollections = []; 
+    snap.forEach(d => {
+      const data = d.data();
+      if (!data.isDeleted) allCollections.push({ id: d.id, ...data });
+    }); 
+    if (currentMainView === 'collections') renderCurrentView();
   });
+
   onSnapshot(query(collection(db, "users", currentUser.uid, "questionTables"), orderBy("updatedAt", "desc")), snap => {
-    allTables = []; snap.forEach(d => allTables.push({ id: d.id, ...d.data() })); if (currentMainView === 'tables') renderCurrentView();
+    allTables = []; 
+    snap.forEach(d => {
+      const data = d.data();
+      if (!data.isDeleted) allTables.push({ id: d.id, ...data });
+    }); 
+    if (currentMainView === 'tables') renderCurrentView();
   });
+
   onSnapshot(query(collection(db, "users", currentUser.uid, "kanjiTables"), orderBy("updatedAt", "desc")), snap => {
-    allKanjiTables = []; snap.forEach(d => allKanjiTables.push({ id: d.id, ...d.data() })); if (currentMainView === 'kanji') renderCurrentView();
+    allKanjiTables = []; 
+    snap.forEach(d => {
+      const data = d.data();
+      if (!data.isDeleted) allKanjiTables.push({ id: d.id, ...data });
+    }); 
+    if (currentMainView === 'kanji') renderCurrentView();
   });
+
   onSnapshot(query(collection(db, "users", currentUser.uid, "timelineTables"), orderBy("updatedAt", "desc")), snap => {
-    allTimelines = []; snap.forEach(d => allTimelines.push({ id: d.id, ...d.data() })); if (currentMainView === 'timeline') renderCurrentView();
+    allTimelines = []; 
+    snap.forEach(d => {
+      const data = d.data();
+      if (!data.isDeleted) allTimelines.push({ id: d.id, ...data });
+    }); 
+    if (currentMainView === 'timeline') renderCurrentView();
   });
 }
 
@@ -120,6 +151,7 @@ function renderDocumentList(docs) {
     const item = document.createElement('div');
     item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${data.id === selectedDocId && !isPlayingCollection ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50'}`;
     item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div><div class="text-[10px] text-gray-500">教科: ${data.subject || '未設定'} | 正解: ${data.stats?.correct || 0} / 誤答: ${data.stats?.incorrect || 0}</div>`;
+    
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('del-btn') || e.target.classList.contains('edit-btn')) return;
       if (isPlayingCollection) {
@@ -129,7 +161,18 @@ function renderDocumentList(docs) {
       }
       selectDocument(data);
     });
-    item.querySelector('.del-btn').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "documents", data.id)); });
+
+    // 💡 削除ボタン（ゴミ箱へ移動の確認 ＋ ソフトデリート処理）
+    item.querySelector('.del-btn').addEventListener('click', async (e) => { 
+      e.stopPropagation(); 
+      if (confirm(`「${data.title}」をゴミ箱に移動しますか？`)) {
+        await setDoc(doc(db, "users", currentUser.uid, "documents", data.id), { isDeleted: true }, { merge: true });
+        if (selectedDocId === data.id) {
+          clearDocumentView();
+        }
+      }
+    });
+
     item.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openRegisterForm(data); });
     container.appendChild(item);
   });
@@ -157,7 +200,13 @@ function renderCollectionList(collections) {
     `;
     item.querySelector('.play-coll-btn').addEventListener('click', (e) => { e.stopPropagation(); startCollectionPlay(c); });
     item.querySelector('.edit-coll').addEventListener('click', (e) => { e.stopPropagation(); openCollectionEditModal(c); });
-    item.querySelector('.del-coll').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "collections", c.id)); });
+    
+    item.querySelector('.del-coll').addEventListener('click', async (e) => { 
+      e.stopPropagation(); 
+      if (confirm(`問題集「${c.name}」をゴミ箱に移動しますか？`)) {
+        await setDoc(doc(db, "users", currentUser.uid, "collections", c.id), { isDeleted: true }, { merge: true });
+      }
+    });
     container.appendChild(item);
   });
 }
