@@ -454,7 +454,7 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   alert("保存しました！"); closeTableRegisterForm();
 });
 
-// --- 6. 漢字問題関連 (「読み書き」モード対応) ---
+// --- 6. 漢字問題関連 (各傍線部の「読み書き」モード対応) ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -526,7 +526,6 @@ function renderKanjiTableRows(passages) {
 
       let leftCellsHtml = '';
       if (sIndex === 0) {
-        // 文章全体を最大15行で大きく俯瞰して入力できるように設定
         leftCellsHtml = `
           <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
@@ -735,7 +734,7 @@ function renderKanjiExerciseCurrentItem() {
   let formattedPassage = passageItem.passageText || "";
   const hasMultiple = passageItem.subItems && passageItem.subItems.length > 1;
 
-  // 実行時にそれぞれの問題の出題モード（読み or 書き）を決定（「読み書き」の場合はランダムで決定）
+  // 演習ごとに「読み書き」のサブ問題をランダムで「読み」または「書き」に確定させる
   passageItem.resolvedDirections = passageItem.resolvedDirections || {};
 
   if (passageItem.subItems) {
@@ -784,7 +783,7 @@ function renderKanjiExerciseCurrentItem() {
   const subItemsContainer = document.getElementById('kanji-sub-items-container');
   subItemsContainer.innerHTML = '';
   
-  // 💡 正誤判定を1問1行レイアウトに刷新（問題番号の右側にボタン配置）
+  // 1問1行のレイアウトで個別正解・誤答ボタンを配置
   passageItem.subItems.forEach((sub, idx) => {
     const subId = sub.id;
     const resolvedDir = passageItem.resolvedDirections[subId] || '読み';
