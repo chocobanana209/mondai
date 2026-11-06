@@ -4,7 +4,6 @@ import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.
 let activeKanjiData = null;
 let kanjiExerciseQueue = [], kanjiRetryQueue = [], currentKanjiIndex = 0, kanjiTotalCount = 0, isKanjiRetryLoop = false;
 
-// --- 漢字問題 リスト描画 ---
 export function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -37,6 +36,7 @@ function openKanjiRegisterForm(kanjiData = null) {
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.add('hidden');
+  document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.add('hidden');
   document.getElementById('kanji-register-form-container').classList.remove('hidden');
@@ -61,7 +61,6 @@ function createEmptyKanjiPassageItem() {
   };
 }
 
-// テキストエリアの高さを自動調整する関数
 function autoResizeTextarea(textarea) {
   textarea.style.height = 'auto';
   const newHeight = Math.min(Math.max(textarea.scrollHeight + 4, 60), 300);
@@ -101,7 +100,7 @@ function renderKanjiTableRows(passages) {
       tr.innerHTML = `
         ${leftCellsHtml}
         <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-word-input" placeholder="傍線部(漢字)" value="${sub.targetWord || ''}"/></td>
-        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(例:こうりょ,おもんぱかり)" value="${sub.reading || ''}"/></td>
+        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(カンマ区切り)" value="${sub.reading || ''}"/></td>
         <td class="p-2 text-center">
           <select class="w-full border rounded p-1 kanji-dir-select bg-white">
             <option value="読み書き" ${sub.direction === '読み書き' ? 'selected' : ''}>読み書き</option>
@@ -232,7 +231,6 @@ document.getElementById('save-kanji-doc-btn').addEventListener('click', async ()
   alert("漢字問題を保存しました！"); closeKanjiRegisterForm();
 });
 
-// --- 漢字 演習プレイヤー ---
 function openKanjiConfigModal(tableData) {
   activeKanjiData = tableData;
   document.getElementById('kanji-config-modal').classList.remove('hidden');
@@ -271,6 +269,7 @@ document.getElementById('start-kanji-exercise-btn').addEventListener('click', ()
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
+  document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('kanji-register-form-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.remove('hidden');
   document.getElementById('kanji-exercise-content').classList.remove('hidden');
@@ -315,7 +314,6 @@ function renderKanjiExerciseCurrentItem() {
         }
         passageItem.resolvedDirections[sub.id] = currentDir;
 
-        // 💡 カンマ区切りの読みの中からランダムに1つを選択して保持
         const readingsArray = (sub.reading || "").split(',').map(s => s.trim()).filter(Boolean);
         const chosenReading = readingsArray.length > 0 ? readingsArray[Math.floor(Math.random() * readingsArray.length)] : sub.targetWord;
         passageItem.resolvedReadings[sub.id] = chosenReading;
