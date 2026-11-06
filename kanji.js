@@ -61,6 +61,12 @@ function createEmptyKanjiPassageItem() {
   };
 }
 
+// 💡 テキストエリアの高さを内容に応じて自動調整するヘルパー関数
+function autoResizeTextarea(textarea) {
+  textarea.style.height = 'auto';
+  textarea.style.height = (textarea.scrollHeight + 4) + 'px';
+}
+
 function renderKanjiTableRows(passages) {
   const tbody = document.getElementById('kanji-table-tbody'); if (!tbody) return;
   tbody.innerHTML = '';
@@ -80,7 +86,7 @@ function renderKanjiTableRows(passages) {
           <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
           <td class="p-2 align-middle" rowspan="${subItems.length}">
-            <textarea rows="15" class="w-full border rounded p-2 kanji-passage-input font-serif leading-relaxed" placeholder="文章全体を入力（最大15行で俯瞰可能）...">${passage.passageText || ''}</textarea>
+            <textarea class="w-full border rounded p-2 kanji-passage-input font-serif leading-relaxed resize-none overflow-hidden" placeholder="文章全体を入力...">${passage.passageText || ''}</textarea>
           </td>
         `;
       }
@@ -101,7 +107,14 @@ function renderKanjiTableRows(passages) {
         </td>
       `;
 
+      // 💡 レンダリング直後および入力イベント時にテキストエリアの高さを自動調整
       if (sIndex === 0) {
+        const textarea = tr.querySelector('.kanji-passage-input');
+        if (textarea) {
+          setTimeout(() => autoResizeTextarea(textarea), 0);
+          textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+        }
+
         const handle = tr.querySelector('.drag-handle');
         if (handle) {
           let draggedTr = null;
