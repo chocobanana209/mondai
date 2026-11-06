@@ -546,7 +546,12 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
 
 
 
-// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
+
+
+
+
+
+// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック (レイアウト修復版) ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -611,65 +616,47 @@ function renderKanjiTableRows(passages) {
     const subItems = passage.subItems && passage.subItems.length > 0 ? passage.subItems : [{ id: `sub_${Date.now()}`, targetWord: "", reading: "", direction: "書き" }];
     
     subItems.forEach((sub, sIndex) => {
-      const wrapper = document.createElement('tr');
-      wrapper.className = "border-b hover:bg-slate-100 kanji-row-item relative overflow-hidden";
-      wrapper.dataset.passageId = passage.id;
-      wrapper.dataset.subId = sub.id;
+      const tr = document.createElement('tr');
+      tr.className = "border-b hover:bg-slate-100 kanji-row-item";
+      tr.dataset.passageId = passage.id;
+      tr.dataset.subId = sub.id;
 
       let leftCellHtml = '';
       if (sIndex === 0) {
         leftCellHtml = `
-          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle w-10" title="ドラッグして移動" draggable="true" rowspan="${subItems.length + 1}">≡</td>
-          <td class="p-2 text-center font-bold text-gray-500 row-index align-middle w-10" rowspan="${subItems.length + 1}">${pIndex + 1}</td>
-          <td class="p-2 align-middle" rowspan="${subItems.length + 1}"><textarea rows="4" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体を入力...">${passage.passageText || ''}</textarea></td>
+          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
+          <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
+          <td class="p-2 align-middle" rowspan="${subItems.length}">
+            <textarea rows="4" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体を入力...">${passage.passageText || ''}</textarea>
+          </td>
         `;
       }
 
-      wrapper.innerHTML = `
-        <td colspan="5" class="p-0 relative">
-          <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer kanji-swipe-del">削除</div>
-          <div class="flex items-center bg-white transition-transform duration-200 ease-out kanji-swipe-content">
-            ${leftCellHtml}
-            <div class="p-2 flex-1"><input type="text" class="w-full border rounded p-1 kanji-word-input" placeholder="傍線部(漢字)" value="${sub.targetWord || ''}"/></div>
-            <div class="p-2 flex-1"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(ひらがな)" value="${sub.reading || ''}"/></div>
-            <div class="p-2 text-center w-28">
-              <select class="w-full border rounded p-1 kanji-dir-select bg-white">
-                <option value="読み" ${sub.direction === '読み' ? 'selected' : ''}>読み</option>
-                <option value="書き" ${sub.direction === '書き' ? 'selected' : ''}>書き</option>
-              </select>
-            </div>
-          </div>
+      tr.innerHTML = `
+        ${leftCellHtml}
+        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-word-input" placeholder="傍線部(漢字)" value="${sub.targetWord || ''}"/></td>
+        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(ひらがな)" value="${sub.reading || ''}"/></td>
+        <td class="p-2 text-center">
+          <select class="w-full border rounded p-1 kanji-dir-select bg-white">
+            <option value="読み" ${sub.direction === '読み' ? 'selected' : ''}>読み</option>
+            <option value="書き" ${sub.direction === '書き' ? 'selected' : ''}>書き</option>
+          </select>
+        </td>
+        <td class="p-2 text-center">
+          <button type="button" class="kanji-row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button>
         </td>
       `;
 
-      const swipeContent = wrapper.querySelector('.kanji-swipe-content');
-      const delAction = wrapper.querySelector('.kanji-swipe-del');
-      let startX = 0, currentX = 0, isSwiping = false;
-
-      swipeContent.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; isSwiping = true; });
-      swipeContent.addEventListener('touchmove', (e) => {
-        if (!isSwiping) return;
-        currentX = e.touches[0].clientX - startX;
-        if (currentX < 0 && currentX > -100) swipeContent.style.transform = `translateX(${currentX}px)`;
-      });
-      swipeContent.addEventListener('touchend', () => {
-        isSwiping = false;
-        if (currentX < -60) swipeContent.style.transform = `translateX(-96px)`;
-        else swipeContent.style.transform = `translateX(0px)`;
-        currentX = 0;
-      });
-      delAction.addEventListener('click', () => deleteKanjiSubItem(passage.id, sub.id));
-
       if (sIndex === 0) {
-        const handle = wrapper.querySelector('.drag-handle');
+        const handle = tr.querySelector('.drag-handle');
         if (handle) {
           let draggedTr = null;
-          handle.addEventListener('dragstart', (e) => { draggedTr = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
-          handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedTr = null; });
-          wrapper.addEventListener('dragover', (e) => e.preventDefault());
-          wrapper.addEventListener('drop', (e) => {
+          handle.addEventListener('dragstart', (e) => { draggedTr = tr; tr.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
+          handle.addEventListener('dragend', () => { tr.classList.remove('opacity-40'); draggedTr = null; });
+          tr.addEventListener('dragover', (e) => e.preventDefault());
+          tr.addEventListener('drop', (e) => {
             e.preventDefault();
-            if (draggedTr && draggedTr !== wrapper) {
+            if (draggedTr && draggedTr !== tr) {
               const currentPassages = collectCurrentKanjiPassages();
               renderKanjiTableRows(currentPassages);
             }
@@ -677,13 +664,15 @@ function renderKanjiTableRows(passages) {
         }
       }
 
-      tbody.appendChild(wrapper);
+      tr.querySelector('.kanji-row-del-btn').addEventListener('click', () => deleteKanjiSubItem(passage.id, sub.id));
+      tbody.appendChild(tr);
     });
 
+    // 傍線追加ボタン行
     const addRowTr = document.createElement('tr');
     addRowTr.className = "bg-amber-50/50 border-b";
     addRowTr.innerHTML = `
-      <td colspan="4" class="p-2 text-center">
+      <td colspan="5" class="p-2 text-center">
         <button type="button" class="add-sub-btn bg-amber-200 hover:bg-amber-300 text-amber-900 px-4 py-1.5 rounded text-xs font-bold shadow-sm transition">+ この文章に傍線部を追加する</button>
       </td>
     `;
@@ -841,7 +830,6 @@ function renderKanjiExerciseCurrentItem() {
   const hasMultiple = passageItem.subItems && passageItem.subItems.length > 1;
 
   if (passageItem.subItems) {
-    // 💡 重複する単語がある場合、最初に出現したものだけに番号と傍線をつけ、2回目以降は傍線にしない
     const seenWords = new Set();
 
     passageItem.subItems.forEach((sub, idx) => {
@@ -852,7 +840,6 @@ function renderKanjiExerciseCurrentItem() {
         if (!seenWords.has(sub.targetWord)) {
           seenWords.add(sub.targetWord);
           
-          // 1回目の出現：傍線＆番号付きにする
           let displayWord = sub.targetWord;
           if (sub.direction === '書き') {
             displayWord = hiraganaToKatakana(sub.reading || sub.targetWord);
