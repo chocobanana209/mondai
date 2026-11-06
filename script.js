@@ -89,7 +89,6 @@ function renderCurrentView() {
   else if (currentMainView === 'kanji') renderKanjiTableList(allKanjiTables);
 }
 
-// --- 通常問題リスト ---
 function renderDocumentList(docs) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = docs.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題がありません。</p>' : '';
@@ -112,7 +111,6 @@ function renderDocumentList(docs) {
   });
 }
 
-// --- 問題集リスト ＆ プレイ機能 ---
 document.getElementById('create-collection-btn').addEventListener('click', () => openCollectionEditModal(null));
 
 function renderCollectionList(collections) {
@@ -220,7 +218,6 @@ document.getElementById('exit-collection-btn').addEventListener('click', () => {
   clearDocumentView();
 });
 
-// --- 解答解説の表示/非表示 (単体問題) ---
 const answerPane = document.getElementById('answer-pane');
 const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
 document.getElementById('toggle-answer-pane-btn').addEventListener('click', () => {
@@ -232,7 +229,6 @@ document.getElementById('close-answer-pane-btn').addEventListener('click', () =>
   toggleAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
-// 問題集用解答トグル
 const collAnswerPane = document.getElementById('coll-answer-pane');
 const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
 toggleCollAnswerBtn.addEventListener('click', () => {
@@ -247,7 +243,6 @@ document.getElementById('close-coll-answer-pane-btn').addEventListener('click', 
   toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
-// 連続解答トグル
 document.getElementById('toggle-continuous-answer-btn').addEventListener('click', () => {
   isContinuousAnswerOn = !isContinuousAnswerOn;
   document.getElementById('continuous-status-text').innerText = isContinuousAnswerOn ? "ON" : "OFF";
@@ -255,7 +250,6 @@ document.getElementById('toggle-continuous-answer-btn').addEventListener('click'
   if (isPlayingCollection) renderCollectionPlayerCurrent();
 });
 
-// --- 正誤記録機能 (Stats Modal) ---
 document.getElementById('header-menu-btn').addEventListener('click', () => {
   if (!currentDocData && !isPlayingCollection) { alert("問題を選択してください。"); return; }
   document.getElementById('stats-modal').classList.remove('hidden');
@@ -292,7 +286,7 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// --- 一問一答表リスト ＆ 編集 ＆ 演習 (≡ハンドルによるドラッグ ＆ 左スワイプ削除対応) ---
+// 一問一答表 (iOS風スワイプ削除搭載)
 function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -341,87 +335,93 @@ function renderTableRows(items) {
   const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
 
   items.forEach((item, index) => {
-    const tr = document.createElement('tr');
-    tr.className = "border-b hover:bg-slate-100 relative overflow-hidden transition-all duration-200";
-    tr.dataset.itemId = item.id;
-    tr.dataset.imgData = item.questionImage || "";
+    const wrapper = document.createElement('tr');
+    wrapper.className = "border-b relative overflow-hidden group";
+    wrapper.dataset.itemId = item.id;
+    wrapper.dataset.imgData = item.questionImage || "";
 
     const hasImg = item.questionImage && item.questionImage.length > 0;
 
-    tr.innerHTML = `
-      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
-      <td class="p-2 text-center font-bold text-gray-500 row-index">${index + 1}</td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${item.question || ''}</textarea></td>
-      <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${item.answer || ''}</textarea></td>
-      <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${item.explanation || ''}</textarea></td>
-      <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 font-bold hidden">✕</button></td>
+    wrapper.innerHTML = `
+      <td colspan="8" class="p-0 relative">
+        <!-- iOS風スワイプで現れる削除ボタン背景 -->
+        <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer swipe-delete-action">削除</div>
+        <!-- スライドするメインの行コンテナ -->
+        <div class="flex items-center bg-white transition-transform duration-200 ease-out row-swipe-content">
+          <div class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle w-12 flex-shrink-0" title="ドラッグして移動" draggable="true">≡</div>
+          <div class="p-2 text-center font-bold text-gray-500 row-index w-10 flex-shrink-0">${index + 1}</div>
+          <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${item.question || ''}</textarea></div>
+          <div class="p-2 text-center w-20 flex-shrink-0"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></div>
+          <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${item.answer || ''}</textarea></div>
+          <div class="p-2 text-center w-28 flex-shrink-0"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></div>
+          <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${item.explanation || ''}</textarea></div>
+        </div>
+      </td>
     `;
 
-    // ≡ハンドルのみでのドラッグ並び替え (入力欄での競合解消)
-    const handle = tr.querySelector('.drag-handle');
+    const swipeContent = wrapper.querySelector('.row-swipe-content');
+    const deleteAction = wrapper.querySelector('.swipe-delete-action');
+    let startX = 0, currentX = 0, isSwiping = false;
+
+    swipeContent.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; isSwiping = true; });
+    swipeContent.addEventListener('touchmove', (e) => {
+      if (!isSwiping) return;
+      currentX = e.touches[0].clientX - startX;
+      if (currentX < 0 && currentX > -100) {
+        swipeContent.style.transform = `translateX(${currentX}px)`;
+      }
+    });
+    swipeContent.addEventListener('touchend', () => {
+      isSwiping = false;
+      if (currentX < -60) {
+        swipeContent.style.transform = `translateX(-96px)`; // 削除ボタン幅分スライド
+      } else {
+        swipeContent.style.transform = `translateX(0px)`;
+      }
+      currentX = 0;
+    });
+
+    deleteAction.addEventListener('click', () => { deleteTableRow(wrapper); });
+
+    const handle = wrapper.querySelector('.drag-handle');
     let draggedRow = null;
-
-    handle.addEventListener('dragstart', (e) => {
-      draggedRow = tr;
-      tr.classList.add('opacity-40');
-      e.dataTransfer.effectAllowed = 'move';
-    });
-
-    handle.addEventListener('dragend', () => {
-      tr.classList.remove('opacity-40');
-      draggedRow = null;
-    });
-
-    tr.addEventListener('dragover', (e) => e.preventDefault());
-    tr.addEventListener('drop', (e) => {
+    handle.addEventListener('dragstart', (e) => { draggedRow = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
+    handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedRow = null; });
+    wrapper.addEventListener('dragover', (e) => e.preventDefault());
+    wrapper.addEventListener('drop', (e) => {
       e.preventDefault();
-      if (draggedRow && draggedRow !== tr) {
+      if (draggedRow && draggedRow !== wrapper) {
         const allRows = Array.from(tbody.querySelectorAll('tr'));
         const draggedIdx = allRows.indexOf(draggedRow);
-        const targetIdx = allRows.indexOf(tr);
-        if (draggedIdx < targetIdx) tbody.insertBefore(draggedRow, tr.nextSibling);
-        else tbody.insertBefore(draggedRow, tr);
+        const targetIdx = allRows.indexOf(wrapper);
+        if (draggedIdx < targetIdx) tbody.insertBefore(draggedRow, wrapper.nextSibling);
+        else tbody.insertBefore(draggedRow, wrapper);
         reindexTableRows();
       }
     });
 
-    // 左スワイプでの行削除検知
-    let startX = 0;
-    tr.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; });
-    tr.addEventListener('touchend', (e) => {
-      let endX = e.changedTouches[0].clientX;
-      if (startX - endX > 80) { // 左に80px以上スワイプ
-        deleteTableRow(tr);
-      }
-    });
-
-    let mouseStartX = 0;
-    tr.addEventListener('mousedown', (e) => { mouseStartX = e.clientX; });
-    tr.addEventListener('mouseup', (e) => {
-      if (mouseStartX - e.clientX > 100) { // マウスで左に100px以上ドラッグ＆ドロップ
-        deleteTableRow(tr);
-      }
-    });
-
-    tr.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, tr.dataset.imgData));
-    setupTableKeyboardNavigation(tr);
-    tbody.appendChild(tr);
+    wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.imgData));
+    setupTableKeyboardNavigation(wrapper);
+    tbody.appendChild(wrapper);
   });
 }
 
-function deleteTableRow(tr) {
+function deleteTableRow(wrapper) {
+  const qArea = wrapper.querySelector('.row-q');
+  const aArea = wrapper.querySelector('.row-a');
+  const impArea = wrapper.querySelector('.row-imp');
+  const expArea = wrapper.querySelector('.row-exp');
+
   lastDeletedRowData = {
-    question: tr.querySelector('.row-q').value,
-    questionImage: tr.dataset.imgData || "",
-    answer: tr.querySelector('.row-a').value,
-    importance: tr.querySelector('.row-imp').value,
-    explanation: tr.querySelector('.row-exp').value
+    question: qArea ? qArea.value : "",
+    questionImage: wrapper.dataset.imgData || "",
+    answer: aArea ? aArea.value : "",
+    importance: impArea ? impArea.value : "中",
+    explanation: expArea ? expArea.value : ""
   };
-  tr.classList.add('translate-x-full', 'opacity-0');
+  wrapper.classList.add('translate-x-full', 'opacity-0');
   setTimeout(() => {
-    tr.remove();
+    wrapper.remove();
     reindexTableRows();
     showUndoNotification();
   }, 200);
@@ -435,7 +435,7 @@ function showUndoNotification() {
   }
   notif.innerHTML = `<span>行を削除しました</span><button id="undo-del-btn" class="bg-blue-600 px-2 py-1 rounded font-bold">元に戻す</button>`;
   notif.classList.remove('hidden');
-  document.getElementById('undo-del-btn').onclick = () => { if (lastDeletedRowData) { addRowToTable(lastDeletedRowData); lastDeletedRowData = null; notif.classList.add('hidden'); } };
+  document.getElementById('undo-del-btn'].onclick = () => { if (lastDeletedRowData) { addRowToTable(lastDeletedRowData); lastDeletedRowData = null; notif.classList.add('hidden'); } };
   setTimeout(() => notif.classList.add('hidden'), 5000);
 }
 
@@ -447,36 +447,52 @@ function addRowToTable(initialData = null) {
   if (!initialData && tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
 
   const newItemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const tr = document.createElement('tr'); tr.className = "border-b hover:bg-slate-100 relative"; tr.dataset.itemId = newItemId; tr.dataset.imgData = initialData ? initialData.questionImage : "";
+  const wrapper = document.createElement('tr'); wrapper.className = "border-b relative overflow-hidden"; wrapper.dataset.itemId = newItemId; wrapper.dataset.imgData = initialData ? initialData.questionImage : "";
   const hasImg = (initialData ? initialData.questionImage : "").length > 0;
 
-  tr.innerHTML = `
-    <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
-    <td class="p-2 text-center font-bold text-gray-500 row-index">${tbody.children.length + 1}</td>
-    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${initialData ? initialData.question : ''}</textarea></td>
-    <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
-    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${initialData ? initialData.answer : ''}</textarea></td>
-    <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}" ${initialData && initialData.importance === i ? 'selected' : ''}>${i}</option>`).join('')}</select></td>
-    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${initialData ? initialData.explanation : defaultExp}</textarea></td>
-    <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 font-bold hidden">✕</button></td>
+  wrapper.innerHTML = `
+    <td colspan="8" class="p-0 relative">
+      <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer swipe-delete-action">削除</div>
+      <div class="flex items-center bg-white transition-transform duration-200 ease-out row-swipe-content">
+        <div class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle w-12 flex-shrink-0" title="ドラッグして移動" draggable="true">≡</div>
+        <div class="p-2 text-center font-bold text-gray-500 row-index w-10 flex-shrink-0">${tbody.children.length + 1}</div>
+        <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${initialData ? initialData.question : ''}</textarea></div>
+        <div class="p-2 text-center w-20 flex-shrink-0"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></div>
+        <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${initialData ? initialData.answer : ''}</textarea></div>
+        <div class="p-2 text-center w-28 flex-shrink-0"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}" ${initialData && initialData.importance === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
+        <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${initialData ? initialData.explanation : defaultExp}</textarea></div>
+      </div>
+    </td>
   `;
 
-  const handle = tr.querySelector('.drag-handle');
+  const swipeContent = wrapper.querySelector('.row-swipe-content');
+  const deleteAction = wrapper.querySelector('.swipe-delete-action');
+  let startX = 0, currentX = 0, isSwiping = false;
+
+  swipeContent.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; isSwiping = true; });
+  swipeContent.addEventListener('touchmove', (e) => {
+    if (!isSwiping) return;
+    currentX = e.touches[0].clientX - startX;
+    if (currentX < 0 && currentX > -100) swipeContent.style.transform = `translateX(${currentX}px)`;
+  });
+  swipeContent.addEventListener('touchend', () => {
+    isSwiping = false;
+    if (currentX < -60) swipeContent.style.transform = `translateX(-96px)`;
+    else swipeContent.style.transform = `translateX(0px)`;
+    currentX = 0;
+  });
+  deleteAction.addEventListener('click', () => deleteTableRow(wrapper));
+
+  const handle = wrapper.querySelector('.drag-handle');
   let draggedRow = null;
-  handle.addEventListener('dragstart', (e) => { draggedRow = tr; tr.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
-  handle.addEventListener('dragend', () => { tr.classList.remove('opacity-40'); draggedRow = null; });
-  tr.addEventListener('dragover', (e) => e.preventDefault());
-  tr.addEventListener('drop', (e) => { e.preventDefault(); reindexTableRows(); });
+  handle.addEventListener('dragstart', (e) => { draggedRow = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
+  handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedRow = null; });
+  wrapper.addEventListener('dragover', (e) => e.preventDefault());
+  wrapper.addEventListener('drop', (e) => { e.preventDefault(); reindexTableRows(); });
 
-  tr.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, tr.dataset.imgData));
-  
-  // スワイプ削除
-  let startX = 0;
-  tr.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; });
-  tr.addEventListener('touchend', (e) => { if (startX - e.changedTouches[0].clientX > 80) deleteTableRow(tr); });
-
-  setupTableKeyboardNavigation(tr);
-  tbody.appendChild(tr);
+  wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.imgData));
+  setupTableKeyboardNavigation(wrapper);
+  tbody.appendChild(wrapper);
 }
 
 function reindexTableRows() {
@@ -514,14 +530,20 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
   const items = [];
   document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
-    items.push({
-      id: tr.dataset.itemId,
-      question: tr.querySelector('.row-q').value.trim(),
-      questionImage: tr.dataset.imgData || "",
-      answer: tr.querySelector('.row-a').value.trim(),
-      importance: tr.querySelector('.row-imp').value,
-      explanation: tr.querySelector('.row-exp').value.trim()
-    });
+    const qArea = tr.querySelector('.row-q');
+    const aArea = tr.querySelector('.row-a');
+    const impArea = tr.querySelector('.row-imp');
+    const expArea = tr.querySelector('.row-exp');
+    if (qArea) {
+      items.push({
+        id: tr.dataset.itemId,
+        question: qArea.value.trim(),
+        questionImage: tr.dataset.imgData || "",
+        answer: aArea ? aArea.value.trim() : "",
+        importance: impArea ? impArea.value : "中",
+        explanation: expArea ? expArea.value.trim() : ""
+      });
+    }
   });
 
   const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
@@ -593,77 +615,75 @@ function renderKanjiTableRows(passages) {
     const subItems = passage.subItems && passage.subItems.length > 0 ? passage.subItems : [{ id: `sub_${Date.now()}`, targetWord: "", reading: "", direction: "読み" }];
     
     subItems.forEach((sub, sIndex) => {
-      const tr = document.createElement('tr');
-      tr.className = "border-b hover:bg-slate-100 kanji-row-item relative transition-all";
-      tr.dataset.passageId = passage.id;
-      tr.dataset.subId = sub.id;
+      const wrapper = document.createElement('tr');
+      wrapper.className = "border-b hover:bg-slate-100 kanji-row-item relative overflow-hidden";
+      wrapper.dataset.passageId = passage.id;
+      wrapper.dataset.subId = sub.id;
 
       let leftCellHtml = '';
       if (sIndex === 0) {
         leftCellHtml = `
-          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
-          <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
-          <td class="p-2 align-middle" rowspan="${subItems.length}">
-            <textarea rows="3" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体...">${passage.passageText || ''}</textarea>
-          </td>
+          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle w-10" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
+          <td class="p-2 text-center font-bold text-gray-500 row-index align-middle w-10" rowspan="${subItems.length}">${pIndex + 1}</td>
+          <td class="p-2 align-middle" rowspan="${subItems.length}"><textarea rows="3" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体...">${passage.passageText || ''}</textarea></td>
         `;
       }
 
-      tr.innerHTML = `
-        ${leftCellHtml}
-        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-word-input" placeholder="傍線部(漢字)" value="${sub.targetWord || ''}"/></td>
-        <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(ひらがな)" value="${sub.reading || ''}"/></td>
-        <td class="p-2 text-center">
-          <select class="w-full border rounded p-1 kanji-dir-select bg-white">
-            <option value="読み" ${sub.direction === '読み' ? 'selected' : ''}>読み</option>
-            <option value="書き" ${sub.direction === '書き' ? 'selected' : ''}>書き</option>
-          </select>
-        </td>
-        <td class="p-2 text-center">
-          <button type="button" class="kanji-row-del-btn text-red-500 font-bold block mx-auto">✕</button>
+      wrapper.innerHTML = `
+        <td colspan="7" class="p-0 relative">
+          <!-- iOS風スワイプ削除 -->
+          <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer kanji-swipe-del">削除</div>
+          <div class="flex items-center bg-white transition-transform duration-200 ease-out kanji-swipe-content">
+            ${leftCellHtml}
+            <div class="p-2 flex-1"><input type="text" class="w-full border rounded p-1 kanji-word-input" placeholder="傍線部(漢字)" value="${sub.targetWord || ''}"/></div>
+            <div class="p-2 flex-1"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(ひらがな)" value="${sub.reading || ''}"/></div>
+            <div class="p-2 text-center w-28">
+              <select class="w-full border rounded p-1 kanji-dir-select bg-white">
+                <option value="読み" ${sub.direction === '読み' ? 'selected' : ''}>読み</option>
+                <option value="書き" ${sub.direction === '書き' ? 'selected' : ''}>書き</option>
+              </select>
+            </div>
+          </div>
         </td>
       `;
 
-      // ≡ハンドルのみでのドラッグ並び替え
+      const swipeContent = wrapper.querySelector('.kanji-swipe-content');
+      const delAction = wrapper.querySelector('.kanji-swipe-del');
+      let startX = 0, currentX = 0, isSwiping = false;
+
+      swipeContent.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; isSwiping = true; });
+      swipeContent.addEventListener('touchmove', (e) => {
+        if (!isSwiping) return;
+        currentX = e.touches[0].clientX - startX;
+        if (currentX < 0 && currentX > -100) swipeContent.style.transform = `translateX(${currentX}px)`;
+      });
+      swipeContent.addEventListener('touchend', () => {
+        isSwiping = false;
+        if (currentX < -60) swipeContent.style.transform = `translateX(-96px)`;
+        else swipeContent.style.transform = `translateX(0px)`;
+        currentX = 0;
+      });
+      delAction.addEventListener('click', () => deleteKanjiSubItem(passage.id, sub.id));
+
       if (sIndex === 0) {
-        const handle = tr.querySelector('.drag-handle');
+        const handle = wrapper.querySelector('.drag-handle');
         let draggedTr = null;
-        handle.addEventListener('dragstart', (e) => {
-          draggedTr = tr;
-          tr.classList.add('opacity-40');
-          e.dataTransfer.effectAllowed = 'move';
-        });
-        handle.addEventListener('dragend', () => {
-          tr.classList.remove('opacity-40');
-          draggedTr = null;
-        });
-        tr.addEventListener('dragover', (e) => e.preventDefault());
-        tr.addEventListener('drop', (e) => {
+        handle.addEventListener('dragstart', (e) => { draggedTr = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
+        handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedTr = null; });
+        wrapper.addEventListener('dragover', (e) => e.preventDefault());
+        wrapper.addEventListener('drop', (e) => {
           e.preventDefault();
-          if (draggedTr && draggedTr !== tr) {
+          if (draggedTr && draggedTr !== wrapper) {
             const currentPassages = collectCurrentKanjiPassages();
             renderKanjiTableRows(currentPassages);
           }
         });
       }
 
-      // 左スワイプでの行削除
-      let startX = 0;
-      tr.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; });
-      tr.addEventListener('touchend', (e) => {
-        if (startX - e.changedTouches[0].clientX > 80) {
-          deleteKanjiSubItem(passage.id, sub.id);
-        }
-      });
-
-      tr.querySelector('.kanji-row-del-btn').addEventListener('click', () => {
-        deleteKanjiSubItem(passage.id, sub.id);
-      });
-
-      tbody.appendChild(tr);
+      tbody.appendChild(wrapper);
     });
 
-    // 💡 要望対応：一番下の傍線部の「さらに下」に独立した行として傍線追加ボタンを配置
+    // 💡 傍線追加ボタンを「一番下の傍線部のさらに下」に配置
     const addRowTr = document.createElement('tr');
     addRowTr.className = "bg-amber-50/50 border-b";
     addRowTr.innerHTML = `
@@ -723,11 +743,17 @@ function collectCurrentKanjiPassages() {
       passageMap.get(passageId).passageText = passageInput.value.trim();
     }
 
-    passageMap.get(passageId).subItems.push({
-      id: subId,
-      targetWord: wordInput ? wordInput.value.trim() : "",
-      reading: readingInput ? readingInput.value.trim() : "",
-      direction: dirSelect ? dirSelect.value : "読み"
+    passageMap.set(passageId, {
+      ...passageMap.get(passageId),
+      subItems: [
+        ...passageMap.get(passageId).subItems,
+        {
+          id: subId,
+          targetWord: wordInput ? wordInput.value.trim() : "",
+          reading: readingInput ? readingInput.value.trim() : "",
+          direction: dirSelect ? dirSelect.value : "読み"
+        }
+      ]
     });
   });
 
@@ -753,7 +779,7 @@ document.getElementById('save-kanji-doc-btn').addEventListener('click', async ()
   alert("漢字問題を保存しました！"); closeKanjiRegisterForm();
 });
 
-// --- 漢字問題 演習プレイヤー ---
+// --- 漢字問題 演習プレイヤー (カタカナ自動変換・番号付き) ---
 let activeKanjiData = null, kanjiExerciseQueue = [], kanjiRetryQueue = [], currentKanjiIndex = 0, kanjiTotalCount = 0, isKanjiRetryLoop = false;
 
 function openKanjiConfigModal(tableData) {
@@ -798,6 +824,11 @@ document.getElementById('start-kanji-exercise-btn').addEventListener('click', ()
   renderKanjiExerciseCurrentItem();
 });
 
+// ひらがなをカタカナに変換するヘルパー関数
+function hiraganaToKatakana(str) {
+  return str.replace(/[\u3041-\u3096]/g, match => String.fromCharCode(match.charCodeAt(0) + 0x60));
+}
+
 function renderKanjiExerciseCurrentItem() {
   if (currentKanjiIndex >= kanjiExerciseQueue.length) {
     if (kanjiRetryQueue.length > 0) {
@@ -816,12 +847,15 @@ function renderKanjiExerciseCurrentItem() {
   document.getElementById('kanji-dir-label').innerText = "同時出題";
 
   let formattedPassage = passageItem.passageText || "";
+  const hasMultiple = passageItem.subItems && passageItem.subItems.length > 1;
+
   if (passageItem.subItems) {
-    passageItem.subItems.forEach(sub => {
+    passageItem.subItems.forEach((sub, idx) => {
       if (sub.targetWord) {
         const escapedWord = sub.targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`(${escapedWord})`, 'g');
-        formattedPassage = formattedPassage.replace(regex, `<span class="kanji-target-underline"><b>$1</b></span>`);
+        const badge = hasMultiple ? `(${idx + 1})` : '';
+        formattedPassage = formattedPassage.replace(regex, `<span class="kanji-target-underline"><b>${badge}$1</b></span>`);
       }
     });
   }
@@ -832,14 +866,21 @@ function renderKanjiExerciseCurrentItem() {
   
   passageItem.subItems.forEach((sub, idx) => {
     const subId = sub.id;
-    const ansText = sub.direction === '読み' ? sub.reading : sub.targetWord;
-    const ansTypeStr = sub.direction === '読み' ? 'ひらがな' : '漢字';
+    let ansText = sub.direction === '読み' ? sub.reading : sub.targetWord;
+    
+    // 💡 要望対応：書き取りの場合は登録された読み・解答をカタカナに変換して表示
+    if (sub.direction === '書き') {
+      ansText = hiraganaToKatakana(sub.reading || sub.targetWord);
+    }
+
+    const ansTypeStr = sub.direction === '読み' ? 'ひらがな' : 'カタカナ';
+    const numberPrefix = hasMultiple ? `(${idx + 1}) ` : '';
 
     const itemDiv = document.createElement('div');
     itemDiv.className = "p-3 bg-white border rounded-lg space-y-2";
     itemDiv.innerHTML = `
       <div class="flex justify-between items-center text-xs">
-        <span class="font-bold text-slate-800">(${idx + 1}) 傍線部「${sub.targetWord}」 [${sub.direction}]</span>
+        <span class="font-bold text-slate-800">${numberPrefix}傍線部「${sub.targetWord}」 [${sub.direction}]</span>
         <span class="text-emerald-700 font-semibold">答え (${ansTypeStr}): <b>${ansText}</b></span>
       </div>
       <div class="flex gap-2">
