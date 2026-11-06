@@ -56,7 +56,15 @@ function updateAuthUI(user) {
 
 document.getElementById('login-btn').addEventListener('click', () => signInWithPopup(auth, new GoogleAuthProvider()));
 document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
-document.getElementById('toggle-sidebar-btn').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('collapsed'));
+
+// 💡 サイドバー（メニューバー）の開閉トグル
+const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+const sidebar = document.getElementById('sidebar');
+if (toggleSidebarBtn && sidebar) {
+  toggleSidebarBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+  });
+}
 
 document.getElementById('nav-docs').addEventListener('click', () => { currentMainView = 'documents'; isPlayingCollection = false; setActiveNavTab('nav-docs'); renderCurrentView(); clearDocumentView(); });
 document.getElementById('nav-collections').addEventListener('click', () => { currentMainView = 'collections'; isPlayingCollection = false; setActiveNavTab('nav-collections'); renderCurrentView(); });
@@ -64,7 +72,6 @@ document.getElementById('nav-tables').addEventListener('click', () => { currentM
 document.getElementById('nav-kanji').addEventListener('click', () => { currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); });
 document.getElementById('nav-timeline').addEventListener('click', () => { currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); });
 
-// 💡 誤答リフレッシュモード起動ボタンのイベント
 document.getElementById('nav-refresh').addEventListener('click', () => {
   isPlayingCollection = false;
   openRefreshModeModal(allDocuments, allTables, allKanjiTables);
