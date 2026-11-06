@@ -172,17 +172,13 @@
             <div id="kanji-ex-passage" class="text-base font-medium text-slate-900 leading-relaxed p-4 bg-white border rounded-lg kanji-passage-box"></div>
           </div>
 
-          <div id="kanji-ex-answer-area" class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 hidden">
-            <div class="text-xs font-bold text-emerald-700">解答 (<span id="kanji-ans-type-label">ひらがな</span>)：</div>
-            <div id="kanji-ex-answer" class="text-lg font-bold text-slate-900">解答テキスト</div>
+          <div id="kanji-ex-answer-area" class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-3 hidden">
+            <div class="text-xs font-bold text-emerald-700">💡 解答と個別正誤判定：</div>
+            <div id="kanji-sub-items-container" class="space-y-2"></div>
           </div>
 
-          <div class="mt-auto pt-4 flex gap-3">
+          <div class="mt-auto pt-4">
             <button id="kanji-ex-show-ans-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm transition">答えを見る</button>
-            <div id="kanji-ex-grade-buttons" class="w-full grid grid-cols-2 gap-3 hidden">
-              <button id="kanji-ex-correct-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg text-sm transition">⭕ 正解</button>
-              <button id="kanji-ex-incorrect-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg text-sm transition">❌ 誤答 (リトライ)</button>
-            </div>
           </div>
         </div>
         <div id="kanji-exercise-result" class="text-center py-20 space-y-4 hidden">
