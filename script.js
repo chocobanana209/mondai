@@ -286,7 +286,7 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// 一問一答表
+// --- 一問一答表関連 ---
 function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -301,7 +301,6 @@ function renderTableList(tables) {
   });
 }
 
-// 💡 エラーの原因だった openTableConfigModal 関数を追加しました
 function openTableConfigModal(tableData) {
   activeTableData = tableData;
   document.getElementById('table-config-modal').classList.remove('hidden');
@@ -312,7 +311,6 @@ document.getElementById('close-table-config-modal').addEventListener('click', ()
 });
 
 document.getElementById('start-table-exercise-btn').addEventListener('click', () => {
-  // 一問一答の演習開始ロジック（そのまま維持）
   document.getElementById('table-config-modal').classList.add('hidden');
 });
 
@@ -456,18 +454,7 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   alert("保存しました！"); closeTableRegisterForm();
 });
 
-
-
-
-
-
-
-
-
-
-
-
-// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
+// --- 6. 漢字問題関連 (「読み書き」モード対応) ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -519,7 +506,7 @@ function createEmptyKanjiPassageItem() {
     id: `passage_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     passageText: "",
     subItems: [
-      { id: `sub_${Date.now()}_1`, targetWord: "", reading: "", direction: "書き" }
+      { id: `sub_${Date.now()}_1`, targetWord: "", reading: "", direction: "読み書き" }
     ]
   };
 }
@@ -529,7 +516,7 @@ function renderKanjiTableRows(passages) {
   tbody.innerHTML = '';
 
   passages.forEach((passage, pIndex) => {
-    const subItems = passage.subItems && passage.subItems.length > 0 ? passage.subItems : [{ id: `sub_${Date.now()}`, targetWord: "", reading: "", direction: "書き" }];
+    const subItems = passage.subItems && passage.subItems.length > 0 ? passage.subItems : [{ id: `sub_${Date.now()}`, targetWord: "", reading: "", direction: "読み書き" }];
     
     subItems.forEach((sub, sIndex) => {
       const tr = document.createElement('tr');
@@ -539,7 +526,7 @@ function renderKanjiTableRows(passages) {
 
       let leftCellsHtml = '';
       if (sIndex === 0) {
-        // 💡 1つの文でも文章全体を大きく俯瞰できるよう、高さを最大15行 (rows="15") に拡大
+        // 文章全体を最大15行で大きく俯瞰して入力できるように設定
         leftCellsHtml = `
           <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
@@ -555,6 +542,7 @@ function renderKanjiTableRows(passages) {
         <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(ひらがな)" value="${sub.reading || ''}"/></td>
         <td class="p-2 text-center">
           <select class="w-full border rounded p-1 kanji-dir-select bg-white">
+            <option value="読み書き" ${sub.direction === '読み書き' ? 'selected' : ''}>読み書き</option>
             <option value="読み" ${sub.direction === '読み' ? 'selected' : ''}>読み</option>
             <option value="書き" ${sub.direction === '書き' ? 'selected' : ''}>書き</option>
           </select>
@@ -596,7 +584,7 @@ function renderKanjiTableRows(passages) {
       const currentPassages = collectCurrentKanjiPassages();
       const targetP = currentPassages.find(p => p.id === passage.id);
       if (targetP) {
-        targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "書き" });
+        targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "読み書き" });
       }
       renderKanjiTableRows(currentPassages);
     });
@@ -649,7 +637,7 @@ function collectCurrentKanjiPassages() {
         id: subId,
         targetWord: wordInput ? wordInput.value.trim() : "",
         reading: readingInput ? readingInput.value.trim() : "",
-        direction: dirSelect ? dirSelect.value : "書き"
+        direction: dirSelect ? dirSelect.value : "読み書き"
       });
     }
   });
@@ -695,7 +683,10 @@ document.getElementById('start-kanji-exercise-btn').addEventListener('click', ()
   if (dirFilter !== 'all') {
     passagesList = passagesList.map(p => ({
       ...p,
-      subItems: p.subItems.filter(sub => sub.direction === dirFilter)
+      subItems: p.subItems.filter(sub => {
+        if (sub.direction === '読み書き') return true;
+        return sub.direction === dirFilter;
+      })
     })).filter(p => p.subItems.length > 0);
   }
 
@@ -740,16 +731,24 @@ function renderKanjiExerciseCurrentItem() {
   const passageItem = kanjiExerciseQueue[currentKanjiIndex];
   document.getElementById('kanji-progress-count').innerText = `文章 ${currentKanjiIndex + 1} / ${kanjiExerciseQueue.length}`;
   document.getElementById('kanji-loop-badge').innerText = isKanjiRetryLoop ? "🔥 リトライ周回" : "通常周回";
-  document.getElementById('kanji-dir-label').innerText = "同時出題";
 
   let formattedPassage = passageItem.passageText || "";
   const hasMultiple = passageItem.subItems && passageItem.subItems.length > 1;
+
+  // 実行時にそれぞれの問題の出題モード（読み or 書き）を決定（「読み書き」の場合はランダムで決定）
+  passageItem.resolvedDirections = passageItem.resolvedDirections || {};
 
   if (passageItem.subItems) {
     const processedWords = new Set();
 
     passageItem.subItems.forEach((sub, idx) => {
       if (sub.targetWord) {
+        let currentDir = sub.direction;
+        if (currentDir === '読み書き') {
+          currentDir = Math.random() < 0.5 ? '読み' : '書き';
+        }
+        passageItem.resolvedDirections[sub.id] = currentDir;
+
         const escapedWord = sub.targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(escapedWord, 'g');
 
@@ -757,18 +756,16 @@ function renderKanjiExerciseCurrentItem() {
         formattedPassage = formattedPassage.replace(regex, (match) => {
           matchCount++;
           if (matchCount === 1 && !processedWords.has(sub.targetWord)) {
-            // 1回目の出現：太字ゴシック ＋ 下線 ＋ 番号付き ＋ 書きならカタカナ
             processedWords.add(sub.targetWord);
             let displayWord = sub.targetWord;
-            if (sub.direction === '書き') {
+            if (currentDir === '書き') {
               displayWord = hiraganaToKatakana(sub.reading || sub.targetWord);
             }
             const badge = hasMultiple ? `(${idx + 1})` : '';
             return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
           } else {
-            // 2回目以降の出現：下線や太字なし、書き問題ならカタカナにしてそのまま表示
             let repeatWord = sub.targetWord;
-            if (sub.direction === '書き') {
+            if (currentDir === '書き') {
               repeatWord = hiraganaToKatakana(sub.reading || sub.targetWord);
             }
             return repeatWord;
@@ -778,7 +775,7 @@ function renderKanjiExerciseCurrentItem() {
     });
   }
 
-  // 💡 文章全体を明朝体 (font-serif) で表示
+  // 文章全体を明朝体 (font-serif) で表示
   const passageContainer = document.getElementById('kanji-ex-passage');
   passageContainer.className = "text-base font-serif text-slate-900 leading-relaxed p-4 bg-white border rounded-lg kanji-passage-box";
   passageContainer.innerHTML = formattedPassage;
@@ -787,24 +784,25 @@ function renderKanjiExerciseCurrentItem() {
   const subItemsContainer = document.getElementById('kanji-sub-items-container');
   subItemsContainer.innerHTML = '';
   
-  // 💡 漢字の正誤判定を「1問1行のレイアウト (問題番号の間右にボタン配置)」に刷新
+  // 💡 正誤判定を1問1行レイアウトに刷新（問題番号の右側にボタン配置）
   passageItem.subItems.forEach((sub, idx) => {
     const subId = sub.id;
-    let ansText = sub.direction === '読み' ? sub.reading : sub.targetWord;
-    if (sub.direction === '書き') {
+    const resolvedDir = passageItem.resolvedDirections[subId] || '読み';
+    let ansText = resolvedDir === '読み' ? sub.reading : sub.targetWord;
+    if (resolvedDir === '書き') {
       ansText = hiraganaToKatakana(sub.reading || sub.targetWord);
     }
 
-    const ansTypeStr = sub.direction === '読み' ? 'ひらがな' : 'カタカナ';
-    const numberPrefix = hasMultiple ? `(${idx + 1})` : `(${idx + 1})`;
+    const ansTypeStr = resolvedDir === '読み' ? 'ひらがな' : 'カタカナ';
+    const numberPrefix = `(${idx + 1})`;
 
     const rowDiv = document.createElement('div');
     rowDiv.className = "flex items-center justify-between p-2.5 bg-white border rounded-lg text-xs gap-3";
     rowDiv.innerHTML = `
       <div class="flex items-center gap-2 truncate">
         <span class="font-bold text-slate-700 w-6 flex-shrink-0">${numberPrefix}</span>
-        <span class="font-bold text-slate-900 truncate">「${sub.targetWord}」 [${sub.direction}]</span>
-        <span class="text-emerald-700 font-semibold ml-2">答え: <b>${ansText}</b></span>
+        <span class="font-bold text-slate-900 truncate">「${sub.targetWord}」 [${resolvedDir}]</span>
+        <span class="text-emerald-700 font-semibold ml-2">答え (${ansTypeStr}): <b>${ansText}</b></span>
       </div>
       <div class="flex gap-1 flex-shrink-0">
         <button type="button" class="px-3 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-slate-100 hover:bg-green-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">⭕ 正解</button>
