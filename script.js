@@ -301,6 +301,21 @@ function renderTableList(tables) {
   });
 }
 
+// 💡 エラーの原因だった openTableConfigModal 関数を追加しました
+function openTableConfigModal(tableData) {
+  activeTableData = tableData;
+  document.getElementById('table-config-modal').classList.remove('hidden');
+}
+
+document.getElementById('close-table-config-modal').addEventListener('click', () => {
+  document.getElementById('table-config-modal').classList.add('hidden');
+});
+
+document.getElementById('start-table-exercise-btn').addEventListener('click', () => {
+  // 一問一答の演習開始ロジック（そのまま維持）
+  document.getElementById('table-config-modal').classList.add('hidden');
+});
+
 document.getElementById('btn-nav-table-register').addEventListener('click', () => openTableRegisterForm(null));
 document.getElementById('cancel-table-register-btn').addEventListener('click', closeTableRegisterForm);
 
@@ -448,6 +463,17 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 // --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
@@ -520,11 +546,12 @@ function renderKanjiTableRows(passages) {
 
       let leftCellsHtml = '';
       if (sIndex === 0) {
+        // 💡 1つの文でも文章全体を大きく俯瞰できるよう、高さを最大15行 (rows="15") に拡大
         leftCellsHtml = `
           <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
           <td class="p-2 align-middle" rowspan="${subItems.length}">
-            <textarea rows="4" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体を入力...">${passage.passageText || ''}</textarea>
+            <textarea rows="15" class="w-full border rounded p-2 kanji-passage-input font-serif leading-relaxed" placeholder="文章全体を入力（最大15行で俯瞰可能）...">${passage.passageText || ''}</textarea>
           </td>
         `;
       }
@@ -737,7 +764,7 @@ function renderKanjiExerciseCurrentItem() {
         formattedPassage = formattedPassage.replace(regex, (match) => {
           matchCount++;
           if (matchCount === 1 && !processedWords.has(sub.targetWord)) {
-            // 1回目の出現：傍線部 ＆ 太字ゴシック ＆ 番号付き
+            // 1回目の出現：太字ゴシック ＋ 下線 ＋ 番号付き ＋ 書きならカタカナ
             processedWords.add(sub.targetWord);
             let displayWord = sub.targetWord;
             if (sub.direction === '書き') {
@@ -746,7 +773,7 @@ function renderKanjiExerciseCurrentItem() {
             const badge = hasMultiple ? `(${idx + 1})` : '';
             return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
           } else {
-            // 2回目以降の出現：下線や太字にせず、書き問題ならカタカナにしてそのまま表示
+            // 2回目以降の出現：下線や太字なし、書き問題ならカタカナにしてそのまま表示
             let repeatWord = sub.targetWord;
             if (sub.direction === '書き') {
               repeatWord = hiraganaToKatakana(sub.reading || sub.targetWord);
@@ -758,14 +785,16 @@ function renderKanjiExerciseCurrentItem() {
     });
   }
 
-  // 💡 全体を明朝体 (font-serif) に設定し、傍線部だけをゴシックにする
+  // 💡 文章全体を明朝体 (font-serif) で表示
   const passageContainer = document.getElementById('kanji-ex-passage');
   passageContainer.className = "text-base font-serif text-slate-900 leading-relaxed p-4 bg-white border rounded-lg kanji-passage-box";
   passageContainer.innerHTML = formattedPassage;
 
   const ansArea = document.getElementById('kanji-ex-answer-area');
-  ansArea.innerHTML = `<div class="text-xs font-bold text-emerald-700 mb-2">💡 解答と個別正誤判定：</div>`;
+  const subItemsContainer = document.getElementById('kanji-sub-items-container');
+  subItemsContainer.innerHTML = '';
   
+  // 💡 漢字の正誤判定を「1問1行のレイアウト (問題番号の間右にボタン配置)」に刷新
   passageItem.subItems.forEach((sub, idx) => {
     const subId = sub.id;
     let ansText = sub.direction === '読み' ? sub.reading : sub.targetWord;
@@ -774,35 +803,36 @@ function renderKanjiExerciseCurrentItem() {
     }
 
     const ansTypeStr = sub.direction === '読み' ? 'ひらがな' : 'カタカナ';
-    const numberPrefix = hasMultiple ? `(${idx + 1}) ` : '';
+    const numberPrefix = hasMultiple ? `(${idx + 1})` : `(${idx + 1})`;
 
-    const itemDiv = document.createElement('div');
-    itemDiv.className = "p-3 bg-white border rounded-lg space-y-2";
-    itemDiv.innerHTML = `
-      <div class="flex justify-between items-center text-xs">
-        <span class="font-bold text-slate-800">${numberPrefix}傍線部「${sub.targetWord}」 [${sub.direction}]</span>
-        <span class="text-emerald-700 font-semibold">答え (${ansTypeStr}): <b>${ansText}</b></span>
+    const rowDiv = document.createElement('div');
+    rowDiv.className = "flex items-center justify-between p-2.5 bg-white border rounded-lg text-xs gap-3";
+    rowDiv.innerHTML = `
+      <div class="flex items-center gap-2 truncate">
+        <span class="font-bold text-slate-700 w-6 flex-shrink-0">${numberPrefix}</span>
+        <span class="font-bold text-slate-900 truncate">「${sub.targetWord}」 [${sub.direction}]</span>
+        <span class="text-emerald-700 font-semibold ml-2">答え: <b>${ansText}</b></span>
       </div>
-      <div class="flex gap-2">
-        <button type="button" class="flex-1 py-1.5 rounded text-xs font-bold transition kanji-sub-correct bg-slate-100 hover:bg-green-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">⭕ 正解</button>
-        <button type="button" class="flex-1 py-1.5 rounded text-xs font-bold transition kanji-sub-incorrect bg-slate-100 hover:bg-red-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">❌ 誤答</button>
+      <div class="flex gap-1 flex-shrink-0">
+        <button type="button" class="px-3 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-slate-100 hover:bg-green-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">⭕ 正解</button>
+        <button type="button" class="px-3 py-1 rounded text-xs font-bold transition kanji-sub-incorrect bg-slate-100 hover:bg-red-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">❌ 誤答</button>
       </div>
     `;
 
-    itemDiv.querySelector('.kanji-sub-correct').addEventListener('click', (e) => {
+    rowDiv.querySelector('.kanji-sub-correct').addEventListener('click', (e) => {
       localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${subId}`, 'correct');
-      e.target.className = "flex-1 py-1.5 rounded text-xs font-bold bg-green-600 text-white border border-green-600";
-      e.target.nextElementSibling.className = "flex-1 py-1.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
+      e.target.className = "px-3 py-1 rounded text-xs font-bold bg-green-600 text-white border border-green-600";
+      e.target.nextElementSibling.className = "px-3 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
     });
 
-    itemDiv.querySelector('.kanji-sub-incorrect').addEventListener('click', (e) => {
+    rowDiv.querySelector('.kanji-sub-incorrect').addEventListener('click', (e) => {
       localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${subId}`, 'incorrect');
-      e.target.className = "flex-1 py-1.5 rounded text-xs font-bold bg-red-600 text-white border border-red-600";
-      e.target.previousElementSibling.className = "flex-1 py-1.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
+      e.target.className = "px-3 py-1 rounded text-xs font-bold bg-red-600 text-white border border-red-600";
+      e.target.previousElementSibling.className = "px-3 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
       if (!kanjiRetryQueue.includes(passageItem)) kanjiRetryQueue.push(passageItem);
     });
 
-    ansArea.appendChild(itemDiv);
+    subItemsContainer.appendChild(rowDiv);
   });
 
   ansArea.classList.add('hidden');
