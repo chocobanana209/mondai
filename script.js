@@ -292,7 +292,7 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// --- 一問一答表リスト ＆ 編集 ＆ 演習 ---
+// --- 一問一答表リスト ＆ 編集 ＆ 演習 (≡ハンドルによるドラッグ ＆ 左スワイプ削除対応) ---
 function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -342,23 +342,38 @@ function renderTableRows(items) {
 
   items.forEach((item, index) => {
     const tr = document.createElement('tr');
-    tr.className = "border-b hover:bg-slate-100"; tr.dataset.itemId = item.id; tr.dataset.imgData = item.questionImage || ""; tr.draggable = true;
+    tr.className = "border-b hover:bg-slate-100 relative overflow-hidden transition-all duration-200";
+    tr.dataset.itemId = item.id;
+    tr.dataset.imgData = item.questionImage || "";
+
     const hasImg = item.questionImage && item.questionImage.length > 0;
 
     tr.innerHTML = `
-      <td class="p-2 text-center text-gray-400 cursor-grab font-bold">↕</td>
+      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
       <td class="p-2 text-center font-bold text-gray-500 row-index">${index + 1}</td>
       <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${item.question || ''}</textarea></td>
       <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
       <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${item.answer || ''}</textarea></td>
       <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></td>
       <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${item.explanation || ''}</textarea></td>
-      <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 font-bold">✕</button></td>
+      <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 font-bold hidden">✕</button></td>
     `;
 
+    // ≡ハンドルのみでのドラッグ並び替え (入力欄での競合解消)
+    const handle = tr.querySelector('.drag-handle');
     let draggedRow = null;
-    tr.addEventListener('dragstart', () => { draggedRow = tr; tr.classList.add('opacity-40'); });
-    tr.addEventListener('dragend', () => { tr.classList.remove('opacity-40'); draggedRow = null; });
+
+    handle.addEventListener('dragstart', (e) => {
+      draggedRow = tr;
+      tr.classList.add('opacity-40');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    handle.addEventListener('dragend', () => {
+      tr.classList.remove('opacity-40');
+      draggedRow = null;
+    });
+
     tr.addEventListener('dragover', (e) => e.preventDefault());
     tr.addEventListener('drop', (e) => {
       e.preventDefault();
@@ -372,20 +387,50 @@ function renderTableRows(items) {
       }
     });
 
-    tr.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, tr.dataset.imgData));
-    tr.querySelector('.row-del-btn').addEventListener('click', () => {
-      lastDeletedRowData = { question: tr.querySelector('.row-q').value, questionImage: tr.dataset.imgData || "", answer: tr.querySelector('.row-a').value, importance: tr.querySelector('.row-imp').value, explanation: tr.querySelector('.row-exp').value };
-      tr.remove(); reindexTableRows(); showUndoNotification();
+    // 左スワイプでの行削除検知
+    let startX = 0;
+    tr.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; });
+    tr.addEventListener('touchend', (e) => {
+      let endX = e.changedTouches[0].clientX;
+      if (startX - endX > 80) { // 左に80px以上スワイプ
+        deleteTableRow(tr);
+      }
     });
+
+    let mouseStartX = 0;
+    tr.addEventListener('mousedown', (e) => { mouseStartX = e.clientX; });
+    tr.addEventListener('mouseup', (e) => {
+      if (mouseStartX - e.clientX > 100) { // マウスで左に100px以上ドラッグ＆ドロップ
+        deleteTableRow(tr);
+      }
+    });
+
+    tr.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, tr.dataset.imgData));
     setupTableKeyboardNavigation(tr);
     tbody.appendChild(tr);
   });
 }
 
+function deleteTableRow(tr) {
+  lastDeletedRowData = {
+    question: tr.querySelector('.row-q').value,
+    questionImage: tr.dataset.imgData || "",
+    answer: tr.querySelector('.row-a').value,
+    importance: tr.querySelector('.row-imp').value,
+    explanation: tr.querySelector('.row-exp').value
+  };
+  tr.classList.add('translate-x-full', 'opacity-0');
+  setTimeout(() => {
+    tr.remove();
+    reindexTableRows();
+    showUndoNotification();
+  }, 200);
+}
+
 function showUndoNotification() {
   let notif = document.getElementById('undo-toast');
   if (!notif) {
-    notif = document.createElement('div'); notif.id = 'undo-toast'; notif.className = 'fixed bottom-5 right-5 bg-slate-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-3';
+    notif = document.createElement('div'); notif.id = 'undo-toast'; notif.className = 'fixed bottom-5 right-5 bg-slate-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-3 transition-all';
     document.body.appendChild(notif);
   }
   notif.innerHTML = `<span>行を削除しました</span><button id="undo-del-btn" class="bg-blue-600 px-2 py-1 rounded font-bold">元に戻す</button>`;
@@ -402,30 +447,34 @@ function addRowToTable(initialData = null) {
   if (!initialData && tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
 
   const newItemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const tr = document.createElement('tr'); tr.className = "border-b hover:bg-slate-100"; tr.dataset.itemId = newItemId; tr.dataset.imgData = initialData ? initialData.questionImage : ""; tr.draggable = true;
+  const tr = document.createElement('tr'); tr.className = "border-b hover:bg-slate-100 relative"; tr.dataset.itemId = newItemId; tr.dataset.imgData = initialData ? initialData.questionImage : "";
   const hasImg = (initialData ? initialData.questionImage : "").length > 0;
 
   tr.innerHTML = `
-    <td class="p-2 text-center text-gray-400 cursor-grab font-bold">↕</td>
+    <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
     <td class="p-2 text-center font-bold text-gray-500 row-index">${tbody.children.length + 1}</td>
     <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${initialData ? initialData.question : ''}</textarea></td>
     <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
     <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${initialData ? initialData.answer : ''}</textarea></td>
     <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}" ${initialData && initialData.importance === i ? 'selected' : ''}>${i}</option>`).join('')}</select></td>
     <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${initialData ? initialData.explanation : defaultExp}</textarea></td>
-    <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 font-bold">✕</button></td>
+    <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 font-bold hidden">✕</button></td>
   `;
 
-  tr.addEventListener('dragstart', () => tr.classList.add('opacity-40'));
-  tr.addEventListener('dragend', () => tr.classList.remove('opacity-40'));
+  const handle = tr.querySelector('.drag-handle');
+  let draggedRow = null;
+  handle.addEventListener('dragstart', (e) => { draggedRow = tr; tr.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
+  handle.addEventListener('dragend', () => { tr.classList.remove('opacity-40'); draggedRow = null; });
   tr.addEventListener('dragover', (e) => e.preventDefault());
   tr.addEventListener('drop', (e) => { e.preventDefault(); reindexTableRows(); });
 
   tr.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, tr.dataset.imgData));
-  tr.querySelector('.row-del-btn').addEventListener('click', () => {
-    lastDeletedRowData = { question: tr.querySelector('.row-q').value, questionImage: tr.dataset.imgData || "", answer: tr.querySelector('.row-a').value, importance: tr.querySelector('.row-imp').value, explanation: tr.querySelector('.row-exp').value };
-    tr.remove(); reindexTableRows(); showUndoNotification();
-  });
+  
+  // スワイプ削除
+  let startX = 0;
+  tr.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; });
+  tr.addEventListener('touchend', (e) => { if (startX - e.changedTouches[0].clientX > 80) deleteTableRow(tr); });
+
   setupTableKeyboardNavigation(tr);
   tbody.appendChild(tr);
 }
@@ -479,7 +528,7 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, importances, items, updatedAt: Date.now() }, { merge: true });
   alert("保存しました！"); closeTableRegisterForm();
 });
-// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック (ドラッグ並び替え・最下部ボタン対応) ---
+// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -545,35 +594,17 @@ function renderKanjiTableRows(passages) {
     
     subItems.forEach((sub, sIndex) => {
       const tr = document.createElement('tr');
-      tr.className = "border-b hover:bg-slate-100 kanji-row-item";
+      tr.className = "border-b hover:bg-slate-100 kanji-row-item relative transition-all";
       tr.dataset.passageId = passage.id;
       tr.dataset.subId = sub.id;
-      tr.draggable = true; // 行全体のドラッグ並び替え対応
 
       let leftCellHtml = '';
       if (sIndex === 0) {
         leftCellHtml = `
-          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle" rowspan="${subItems.length}">↕</td>
+          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
           <td class="p-2 align-middle" rowspan="${subItems.length}">
             <textarea rows="3" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体...">${passage.passageText || ''}</textarea>
-          </td>
-        `;
-      }
-
-      // 最下部への傍線追加ボタン配置用HTML構築
-      let actionCellHtml = '';
-      if (sIndex === subItems.length - 1) {
-        actionCellHtml = `
-          <td class="p-2 text-center align-middle">
-            <button type="button" class="add-sub-btn bg-amber-100 text-amber-800 hover:bg-amber-200 px-2.5 py-1 rounded text-[10px] font-bold mb-1 block mx-auto">+ 傍線追加</button>
-            <button type="button" class="kanji-row-del-btn text-red-500 font-bold block mx-auto">✕</button>
-          </td>
-        `;
-      } else {
-        actionCellHtml = `
-          <td class="p-2 text-center align-middle">
-            <button type="button" class="kanji-row-del-btn text-red-500 font-bold block mx-auto">✕</button>
           </td>
         `;
       }
@@ -588,51 +619,82 @@ function renderKanjiTableRows(passages) {
             <option value="書き" ${sub.direction === '書き' ? 'selected' : ''}>書き</option>
           </select>
         </td>
-        ${actionCellHtml}
+        <td class="p-2 text-center">
+          <button type="button" class="kanji-row-del-btn text-red-500 font-bold block mx-auto">✕</button>
+        </td>
       `;
 
-      // ドラッグ＆ドロップ並び替えのイベント設定
-      let draggedKanjiRow = null;
-      tr.addEventListener('dragstart', () => { draggedKanjiRow = tr; tr.classList.add('opacity-40'); });
-      tr.addEventListener('dragend', () => { tr.classList.remove('opacity-40'); draggedKanjiRow = null; });
-      tr.addEventListener('dragover', (e) => e.preventDefault());
-      tr.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (draggedKanjiRow && draggedKanjiRow !== tr) {
-          const currentPassages = collectCurrentKanjiPassages();
-          renderKanjiTableRows(currentPassages);
-        }
-      });
-
-      // 傍線追加ボタン (一番下に配置)
-      if (sIndex === subItems.length - 1) {
-        tr.querySelector('.add-sub-btn').addEventListener('click', () => {
-          const currentPassages = collectCurrentKanjiPassages();
-          const targetP = currentPassages.find(p => p.id === passage.id);
-          if (targetP) {
-            targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "読み" });
+      // ≡ハンドルのみでのドラッグ並び替え
+      if (sIndex === 0) {
+        const handle = tr.querySelector('.drag-handle');
+        let draggedTr = null;
+        handle.addEventListener('dragstart', (e) => {
+          draggedTr = tr;
+          tr.classList.add('opacity-40');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        handle.addEventListener('dragend', () => {
+          tr.classList.remove('opacity-40');
+          draggedTr = null;
+        });
+        tr.addEventListener('dragover', (e) => e.preventDefault());
+        tr.addEventListener('drop', (e) => {
+          e.preventDefault();
+          if (draggedTr && draggedTr !== tr) {
+            const currentPassages = collectCurrentKanjiPassages();
+            renderKanjiTableRows(currentPassages);
           }
-          renderKanjiTableRows(currentPassages);
         });
       }
 
-      tr.querySelector('.kanji-row-del-btn').addEventListener('click', () => {
-        const currentPassages = collectCurrentKanjiPassages();
-        const targetP = currentPassages.find(p => p.id === passage.id);
-        if (targetP) {
-          targetP.subItems = targetP.subItems.filter(s => s.id !== sub.id);
-          if (targetP.subItems.length === 0) {
-            const filtered = currentPassages.filter(p => p.id !== passage.id);
-            renderKanjiTableRows(filtered.length > 0 ? filtered : [createEmptyKanjiPassageItem()]);
-          } else {
-            renderKanjiTableRows(currentPassages);
-          }
+      // 左スワイプでの行削除
+      let startX = 0;
+      tr.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; });
+      tr.addEventListener('touchend', (e) => {
+        if (startX - e.changedTouches[0].clientX > 80) {
+          deleteKanjiSubItem(passage.id, sub.id);
         }
+      });
+
+      tr.querySelector('.kanji-row-del-btn').addEventListener('click', () => {
+        deleteKanjiSubItem(passage.id, sub.id);
       });
 
       tbody.appendChild(tr);
     });
+
+    // 💡 要望対応：一番下の傍線部の「さらに下」に独立した行として傍線追加ボタンを配置
+    const addRowTr = document.createElement('tr');
+    addRowTr.className = "bg-amber-50/50 border-b";
+    addRowTr.innerHTML = `
+      <td colspan="6" class="p-2 text-center">
+        <button type="button" class="add-sub-btn bg-amber-200 hover:bg-amber-300 text-amber-900 px-4 py-1.5 rounded text-xs font-bold shadow-sm transition">+ この文章に傍線部を追加する</button>
+      </td>
+    `;
+    addRowTr.querySelector('.add-sub-btn').addEventListener('click', () => {
+      const currentPassages = collectCurrentKanjiPassages();
+      const targetP = currentPassages.find(p => p.id === passage.id);
+      if (targetP) {
+        targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "読み" });
+      }
+      renderKanjiTableRows(currentPassages);
+    });
+    tbody.appendChild(addRowTr);
   });
+}
+
+function deleteKanjiSubItem(passageId, subId) {
+  const currentPassages = collectCurrentKanjiPassages();
+  const targetP = currentPassages.find(p => p.id === passageId);
+  if (targetP) {
+    targetP.subItems = targetP.subItems.filter(s => s.id !== subId);
+    if (targetP.subItems.length === 0) {
+      const filtered = currentPassages.filter(p => p.id !== passageId);
+      renderKanjiTableRows(filtered.length > 0 ? filtered : [createEmptyKanjiPassageItem()]);
+    } else {
+      renderKanjiTableRows(currentPassages);
+    }
+  }
 }
 
 function collectCurrentKanjiPassages() {
@@ -790,7 +852,6 @@ function renderKanjiExerciseCurrentItem() {
       localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${subId}`, 'correct');
       e.target.className = "flex-1 py-1.5 rounded text-xs font-bold bg-green-600 text-white border border-green-600";
       e.target.nextElementSibling.className = "flex-1 py-1.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
-      checkAllSubItemsGraded();
     });
 
     itemDiv.querySelector('.kanji-sub-incorrect').addEventListener('click', (e) => {
@@ -798,7 +859,6 @@ function renderKanjiExerciseCurrentItem() {
       e.target.className = "flex-1 py-1.5 rounded text-xs font-bold bg-red-600 text-white border border-red-600";
       e.target.previousElementSibling.className = "flex-1 py-1.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
       if (!kanjiRetryQueue.includes(passageItem)) kanjiRetryQueue.push(passageItem);
-      checkAllSubItemsGraded();
     });
 
     ansArea.appendChild(itemDiv);
@@ -807,7 +867,6 @@ function renderKanjiExerciseCurrentItem() {
   ansArea.classList.add('hidden');
   document.getElementById('kanji-ex-show-ans-btn').classList.remove('hidden');
   
-  // 既存の次へボタンがあれば削除
   const oldNextBtn = document.getElementById('kanji-next-passage-btn');
   if (oldNextBtn) oldNextBtn.remove();
 }
@@ -816,7 +875,6 @@ document.getElementById('kanji-ex-show-ans-btn').addEventListener('click', () =>
   document.getElementById('kanji-ex-answer-area').classList.remove('hidden');
   document.getElementById('kanji-ex-show-ans-btn').classList.add('hidden');
   
-  // 答えを表示した時に「次の文章へ進む」ボタンを自動生成
   let nextBtn = document.getElementById('kanji-next-passage-btn');
   if (!nextBtn) {
     nextBtn = document.createElement('button');
@@ -831,10 +889,6 @@ document.getElementById('kanji-ex-show-ans-btn').addEventListener('click', () =>
     document.getElementById('kanji-exercise-content').appendChild(nextBtn);
   }
 });
-
-function checkAllSubItemsGraded() {
-  // すべて個別判定が終わった後の挙動調整用
-}
 
 document.getElementById('restart-kanji-ex-btn').addEventListener('click', () => openKanjiConfigModal(activeKanjiData));
 document.getElementById('exit-kanji-player-btn').addEventListener('click', () => {
