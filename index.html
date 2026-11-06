@@ -6,6 +6,18 @@
   <title>MONDAI - 学習アプリ</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* サイドバーの開閉アニメーション・スタイル */
+    #sidebar {
+      transition: width 0.3s ease, min-width 0.3s ease;
+    }
+    #sidebar.collapsed {
+      width: 0 !important;
+      min-width: 0 !important;
+      border-right: none !important;
+      overflow: hidden;
+    }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
 
