@@ -286,7 +286,7 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// 一問一答表 (iOS風スワイプ削除対応)
+// 一問一答表
 function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -339,42 +339,18 @@ function renderTableRows(items) {
     wrapper.className = "border-b relative overflow-hidden group";
     wrapper.dataset.itemId = item.id;
     wrapper.dataset.imgData = item.questionImage || "";
-
     const hasImg = item.questionImage && item.questionImage.length > 0;
 
     wrapper.innerHTML = `
-      <td colspan="8" class="p-0 relative">
-        <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer swipe-delete-action">削除</div>
-        <div class="flex items-center bg-white transition-transform duration-200 ease-out row-swipe-content">
-          <div class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle w-12 flex-shrink-0" title="ドラッグして移動" draggable="true">≡</div>
-          <div class="p-2 text-center font-bold text-gray-500 row-index w-10 flex-shrink-0">${index + 1}</div>
-          <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${item.question || ''}</textarea></div>
-          <div class="p-2 text-center w-20 flex-shrink-0"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></div>
-          <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${item.answer || ''}</textarea></div>
-          <div class="p-2 text-center w-28 flex-shrink-0"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></div>
-          <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${item.explanation || ''}</textarea></div>
-        </div>
-      </td>
+      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
+      <td class="p-2 text-center font-bold text-gray-500 row-index">${index + 1}</td>
+      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${item.question || ''}</textarea></td>
+      <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
+      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${item.answer || ''}</textarea></td>
+      <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></td>
+      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${item.explanation || ''}</textarea></td>
+      <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
     `;
-
-    const swipeContent = wrapper.querySelector('.row-swipe-content');
-    const deleteAction = wrapper.querySelector('.swipe-delete-action');
-    let startX = 0, currentX = 0, isSwiping = false;
-
-    swipeContent.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; isSwiping = true; });
-    swipeContent.addEventListener('touchmove', (e) => {
-      if (!isSwiping) return;
-      currentX = e.touches[0].clientX - startX;
-      if (currentX < 0 && currentX > -100) swipeContent.style.transform = `translateX(${currentX}px)`;
-    });
-    swipeContent.addEventListener('touchend', () => {
-      isSwiping = false;
-      if (currentX < -60) swipeContent.style.transform = `translateX(-96px)`;
-      else swipeContent.style.transform = `translateX(0px)`;
-      currentX = 0;
-    });
-
-    deleteAction.addEventListener('click', () => deleteTableRow(wrapper));
 
     const handle = wrapper.querySelector('.drag-handle');
     let draggedRow = null;
@@ -394,98 +370,9 @@ function renderTableRows(items) {
     });
 
     wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.imgData));
-    setupTableKeyboardNavigation(wrapper);
+    wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
     tbody.appendChild(wrapper);
   });
-}
-
-function deleteTableRow(wrapper) {
-  const qArea = wrapper.querySelector('.row-q');
-  const aArea = wrapper.querySelector('.row-a');
-  const impArea = wrapper.querySelector('.row-imp');
-  const expArea = wrapper.querySelector('.row-exp');
-
-  lastDeletedRowData = {
-    question: qArea ? qArea.value : "",
-    questionImage: wrapper.dataset.imgData || "",
-    answer: aArea ? aArea.value : "",
-    importance: impArea ? impArea.value : "中",
-    explanation: expArea ? expArea.value : ""
-  };
-  wrapper.classList.add('translate-x-full', 'opacity-0');
-  setTimeout(() => {
-    wrapper.remove();
-    reindexTableRows();
-    showUndoNotification();
-  }, 200);
-}
-
-function showUndoNotification() {
-  let notif = document.getElementById('undo-toast');
-  if (!notif) {
-    notif = document.createElement('div'); notif.id = 'undo-toast'; notif.className = 'fixed bottom-5 right-5 bg-slate-800 text-white text-xs px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-3 transition-all';
-    document.body.appendChild(notif);
-  }
-  notif.innerHTML = `<span>行を削除しました</span><button id="undo-del-btn" class="bg-blue-600 px-2 py-1 rounded font-bold">元に戻す</button>`;
-  notif.classList.remove('hidden');
-  document.getElementById('undo-del-btn').onclick = () => { if (lastDeletedRowData) { addRowToTable(lastDeletedRowData); lastDeletedRowData = null; notif.classList.add('hidden'); } };
-  setTimeout(() => notif.classList.add('hidden'), 5000);
-}
-
-function addRowToTable(initialData = null) {
-  const tbody = document.getElementById('qa-table-tbody'); if (!tbody) return;
-  const importancesInput = document.getElementById('table-importances-input');
-  const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
-  let defaultExp = "";
-  if (!initialData && tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
-
-  const newItemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const wrapper = document.createElement('tr'); wrapper.className = "border-b relative overflow-hidden"; wrapper.dataset.itemId = newItemId; wrapper.dataset.imgData = initialData ? initialData.questionImage : "";
-  const hasImg = (initialData ? initialData.questionImage : "").length > 0;
-
-  wrapper.innerHTML = `
-    <td colspan="8" class="p-0 relative">
-      <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer swipe-delete-action">削除</div>
-      <div class="flex items-center bg-white transition-transform duration-200 ease-out row-swipe-content">
-        <div class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle w-12 flex-shrink-0" title="ドラッグして移動" draggable="true">≡</div>
-        <div class="p-2 text-center font-bold text-gray-500 row-index w-10 flex-shrink-0">${tbody.children.length + 1}</div>
-        <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${initialData ? initialData.question : ''}</textarea></div>
-        <div class="p-2 text-center w-20 flex-shrink-0"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></div>
-        <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${initialData ? initialData.answer : ''}</textarea></div>
-        <div class="p-2 text-center w-28 flex-shrink-0"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}" ${initialData && initialData.importance === i ? 'selected' : ''}>${i}</option>`).join('')}</select></div>
-        <div class="p-2 flex-1"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${initialData ? initialData.explanation : defaultExp}</textarea></div>
-      </div>
-    </td>
-  `;
-
-  const swipeContent = wrapper.querySelector('.row-swipe-content');
-  const deleteAction = wrapper.querySelector('.swipe-delete-action');
-  let startX = 0, currentX = 0, isSwiping = false;
-
-  swipeContent.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; isSwiping = true; });
-  swipeContent.addEventListener('touchmove', (e) => {
-    if (!isSwiping) return;
-    currentX = e.touches[0].clientX - startX;
-    if (currentX < 0 && currentX > -100) swipeContent.style.transform = `translateX(${currentX}px)`;
-  });
-  swipeContent.addEventListener('touchend', () => {
-    isSwiping = false;
-    if (currentX < -60) swipeContent.style.transform = `translateX(-96px)`;
-    else swipeContent.style.transform = `translateX(0px)`;
-    currentX = 0;
-  });
-  deleteAction.addEventListener('click', () => deleteTableRow(wrapper));
-
-  const handle = wrapper.querySelector('.drag-handle');
-  let draggedRow = null;
-  handle.addEventListener('dragstart', (e) => { draggedRow = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
-  handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedRow = null; });
-  wrapper.addEventListener('dragover', (e) => e.preventDefault());
-  wrapper.addEventListener('drop', (e) => { e.preventDefault(); reindexTableRows(); });
-
-  wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.imgData));
-  setupTableKeyboardNavigation(wrapper);
-  tbody.appendChild(wrapper);
 }
 
 function reindexTableRows() {
@@ -498,21 +385,31 @@ function reindexTableRows() {
 const addRowBtn = document.getElementById('add-qa-row-btn');
 if (addRowBtn) addRowBtn.addEventListener('click', () => addRowToTable(null));
 
-function setupTableKeyboardNavigation(tr) {
-  const inputs = tr.querySelectorAll('.row-q, .row-a, .row-imp, .row-exp');
-  inputs.forEach((input, colIdx) => {
-    input.addEventListener('keydown', (e) => {
-      const focusable = ['.row-q', '.row-a', '.row-imp', '.row-exp'];
-      let target = null;
-      if (e.key === 'ArrowRight' && colIdx < focusable.length - 1) target = tr.querySelector(focusable[colIdx + 1]);
-      else if (e.key === 'ArrowLeft' && colIdx > 0) target = tr.querySelector(focusable[colIdx - 1]);
-      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        const targetTr = e.key === 'ArrowDown' ? tr.nextElementSibling : tr.previousElementSibling;
-        if (targetTr) target = targetTr.querySelector(focusable[colIdx]);
-      }
-      if (target) { e.preventDefault(); target.focus(); }
-    });
-  });
+function addRowToTable(initialData = null) {
+  const tbody = document.getElementById('qa-table-tbody'); if (!tbody) return;
+  const importancesInput = document.getElementById('table-importances-input');
+  const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
+  let defaultExp = "";
+  if (!initialData && tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
+
+  const newItemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const wrapper = document.createElement('tr'); wrapper.className = "border-b"; wrapper.dataset.itemId = newItemId; wrapper.dataset.imgData = initialData ? initialData.questionImage : "";
+  const hasImg = (initialData ? initialData.questionImage : "").length > 0;
+
+  wrapper.innerHTML = `
+    <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
+    <td class="p-2 text-center font-bold text-gray-500 row-index">${tbody.children.length + 1}</td>
+    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${initialData ? initialData.question : ''}</textarea></td>
+    <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
+    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${initialData ? initialData.answer : ''}</textarea></td>
+    <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}" ${initialData && initialData.importance === i ? 'selected' : ''}>${i}</option>`).join('')}</select></td>
+    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${initialData ? initialData.explanation : defaultExp}</textarea></td>
+    <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
+  `;
+
+  wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.imgData));
+  wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
+  tbody.appendChild(wrapper);
 }
 
 document.getElementById('save-table-doc-btn').addEventListener('click', async () => {
@@ -544,14 +441,7 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   alert("保存しました！"); closeTableRegisterForm();
 });
 
-
-
-
-
-
-
-
-// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック (レイアウト修復版) ---
+// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -623,6 +513,7 @@ function renderKanjiTableRows(passages) {
 
       let leftCellHtml = '';
       if (sIndex === 0) {
+        // 最初の行のみ rowspan を使って 1〜3列目（並び替え、#、文章）をセル結合し、HTMLの7列にピタリと合わせます
         leftCellHtml = `
           <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
@@ -668,11 +559,11 @@ function renderKanjiTableRows(passages) {
       tbody.appendChild(tr);
     });
 
-    // 傍線追加ボタン行
+    // 傍線追加ボタン行（colspan="7" に修正し、テーブルの7列にきれいに収まるようにしました）
     const addRowTr = document.createElement('tr');
     addRowTr.className = "bg-amber-50/50 border-b";
     addRowTr.innerHTML = `
-      <td colspan="5" class="p-2 text-center">
+      <td colspan="7" class="p-2 text-center">
         <button type="button" class="add-sub-btn bg-amber-200 hover:bg-amber-300 text-amber-900 px-4 py-1.5 rounded text-xs font-bold shadow-sm transition">+ この文章に傍線部を追加する</button>
       </td>
     `;
