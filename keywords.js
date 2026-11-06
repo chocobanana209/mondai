@@ -93,8 +93,12 @@ function renderTableExerciseCurrentItem() {
     choicesArea.classList.remove('hidden');
     choicesArea.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-1">選択肢：</div>`;
     
+    // 正解をカンマ区切りで複数取得し、ランダムに1つ代表を選ぶか、複数正解に対応させる
+    const correctList = (item.answer || "").split(',').map(s => s.trim()).filter(Boolean);
+    const primaryCorrect = correctList.length > 0 ? correctList[0] : "";
     const wrongList = item.wrongChoices.split(',').map(s => s.trim()).filter(Boolean);
-    let allChoices = [{ text: item.answer, isCorrect: true, img: item.choiceImage || "" }];
+    
+    let allChoices = [{ text: primaryCorrect, isCorrect: true, img: item.choiceImage || "" }];
     wrongList.forEach(w => allChoices.push({ text: w, isCorrect: false, img: "" }));
     allChoices.sort(() => Math.random() - 0.5);
 
@@ -107,7 +111,9 @@ function renderTableExerciseCurrentItem() {
       btn.innerHTML = `<span class="font-bold text-blue-600">${idx + 1}.</span> <span>${ch.text}</span> ${ch.img ? `<img src="${ch.img}" class="max-h-12 ml-auto rounded"/>` : ''}`;
       btn.onclick = () => {
         grid.querySelectorAll('button').forEach(b => b.disabled = true);
-        if (ch.isCorrect) {
+        // 複数正解のいずれかに含まれているか判定
+        const isMatched = correctList.some(c => c === ch.text);
+        if (isMatched) {
           btn.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
         } else {
           btn.className = "p-3 border-2 border-red-500 rounded-lg bg-red-50 text-left text-xs font-bold flex items-center gap-3";
@@ -202,11 +208,11 @@ function renderTableRows(items) {
     const hasChoiceImg = (item.choiceImage || "").length > 0;
 
     wrapper.innerHTML = `
-      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
+      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
       <td class="p-2 text-center font-bold text-gray-500 row-index">${index + 1}</td>
       <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${item.question || ''}</textarea></td>
       <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答...">${item.answer || ''}</textarea></td>
+      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答(複数可:カンマ区切り)">${item.answer || ''}</textarea></td>
       <td class="p-2 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" ${item.isChoiceMode ? 'checked' : ''} title="選択肢形式にする"/></td>
       <td class="p-2"><input type="text" class="w-full border rounded p-1 row-wrong" placeholder="誤答をカンマ区切り" value="${item.wrongChoices || ''}"/></td>
       <td class="p-2 text-center"><button type="button" class="row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasChoiceImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasChoiceImg ? '画像付(変)' : '画像追加'}</button></td>
@@ -215,19 +221,32 @@ function renderTableRows(items) {
       <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
     `;
 
+    // 💡 スムーズなドラッグ＆ドロップ処理の適用
     const handle = wrapper.querySelector('.drag-handle');
-    let draggedRow = null;
-    handle.addEventListener('dragstart', (e) => { draggedRow = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
-    handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedRow = null; });
+    handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
+    handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
+
+    wrapper.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', item.id);
+      wrapper.classList.add('opacity-40');
+    });
+    wrapper.addEventListener('dragend', () => {
+      wrapper.classList.remove('opacity-40');
+      wrapper.removeAttribute('draggable');
+    });
     wrapper.addEventListener('dragover', (e) => e.preventDefault());
     wrapper.addEventListener('drop', (e) => {
       e.preventDefault();
-      if (draggedRow && draggedRow !== wrapper) {
+      const draggingRow = tbody.querySelector('.opacity-40');
+      if (draggingRow && draggingRow !== wrapper) {
         const allRows = Array.from(tbody.querySelectorAll('tr'));
-        const draggedIdx = allRows.indexOf(draggedRow);
+        const draggedIdx = allRows.indexOf(draggingRow);
         const targetIdx = allRows.indexOf(wrapper);
-        if (draggedIdx < targetIdx) tbody.insertBefore(draggedRow, wrapper.nextSibling);
-        else tbody.insertBefore(draggedRow, wrapper);
+        if (draggedIdx < targetIdx) {
+          tbody.insertBefore(draggingRow, wrapper.nextSibling);
+        } else {
+          tbody.insertBefore(draggingRow, wrapper);
+        }
         reindexTableRows();
       }
     });
@@ -261,11 +280,11 @@ document.getElementById('add-qa-row-btn').addEventListener('click', () => {
   wrapper.dataset.choiceImgData = "";
 
   wrapper.innerHTML = `
-    <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle" title="ドラッグして移動" draggable="true">≡</td>
+    <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
     <td class="p-2 text-center font-bold text-gray-500 row-index">${tbody.children.length + 1}</td>
     <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題..."></textarea></td>
     <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
-    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答..."></textarea></td>
+    <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答(複数可:カンマ区切り)"></textarea></td>
     <td class="p-2 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" title="選択肢形式にする"/></td>
     <td class="p-2"><input type="text" class="w-full border rounded p-1 row-wrong" placeholder="誤答をカンマ区切り"/></td>
     <td class="p-2 text-center"><button type="button" class="row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
@@ -274,11 +293,40 @@ document.getElementById('add-qa-row-btn').addEventListener('click', () => {
     <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
   `;
 
+  // 新規追加行にも同様のドラッグ機能を付与
+  const handle = wrapper.querySelector('.drag-handle');
+  handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
+  handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
+  wrapper.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', newItemId);
+    wrapper.classList.add('opacity-40');
+  });
+  wrapper.addEventListener('dragend', () => {
+    wrapper.classList.remove('opacity-40');
+    wrapper.removeAttribute('draggable');
+  });
+  wrapper.addEventListener('dragover', (e) => e.preventDefault());
+  wrapper.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const draggingRow = tbody.querySelector('.opacity-40');
+    if (draggingRow && draggingRow !== wrapper) {
+      const allRows = Array.from(tbody.querySelectorAll('tr'));
+      const draggedIdx = allRows.indexOf(draggingRow);
+      const targetIdx = allRows.indexOf(wrapper);
+      if (draggedIdx < targetIdx) {
+        tbody.insertBefore(draggingRow, wrapper.nextSibling);
+      } else {
+        tbody.insertBefore(draggingRow, wrapper);
+      }
+      reindexTableRows();
+    }
+  });
+
   wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.imgData, 'question'));
   wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.choiceImgData, 'choice'));
   wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
   tbody.appendChild(wrapper);
-});
+}
 
 document.getElementById('save-table-doc-btn').addEventListener('click', async () => {
   if (!currentUser) return;
