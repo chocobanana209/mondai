@@ -286,7 +286,7 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
-// 一問一答表 (iOS風スワイプ削除搭載)
+// 一問一答表 (iOS風スワイプ削除対応)
 function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -344,9 +344,7 @@ function renderTableRows(items) {
 
     wrapper.innerHTML = `
       <td colspan="8" class="p-0 relative">
-        <!-- iOS風スワイプで現れる削除ボタン背景 -->
         <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer swipe-delete-action">削除</div>
-        <!-- スライドするメインの行コンテナ -->
         <div class="flex items-center bg-white transition-transform duration-200 ease-out row-swipe-content">
           <div class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle w-12 flex-shrink-0" title="ドラッグして移動" draggable="true">≡</div>
           <div class="p-2 text-center font-bold text-gray-500 row-index w-10 flex-shrink-0">${index + 1}</div>
@@ -367,21 +365,16 @@ function renderTableRows(items) {
     swipeContent.addEventListener('touchmove', (e) => {
       if (!isSwiping) return;
       currentX = e.touches[0].clientX - startX;
-      if (currentX < 0 && currentX > -100) {
-        swipeContent.style.transform = `translateX(${currentX}px)`;
-      }
+      if (currentX < 0 && currentX > -100) swipeContent.style.transform = `translateX(${currentX}px)`;
     });
     swipeContent.addEventListener('touchend', () => {
       isSwiping = false;
-      if (currentX < -60) {
-        swipeContent.style.transform = `translateX(-96px)`; // 削除ボタン幅分スライド
-      } else {
-        swipeContent.style.transform = `translateX(0px)`;
-      }
+      if (currentX < -60) swipeContent.style.transform = `translateX(-96px)`;
+      else swipeContent.style.transform = `translateX(0px)`;
       currentX = 0;
     });
 
-    deleteAction.addEventListener('click', () => { deleteTableRow(wrapper); });
+    deleteAction.addEventListener('click', () => deleteTableRow(wrapper));
 
     const handle = wrapper.querySelector('.drag-handle');
     let draggedRow = null;
@@ -435,7 +428,7 @@ function showUndoNotification() {
   }
   notif.innerHTML = `<span>行を削除しました</span><button id="undo-del-btn" class="bg-blue-600 px-2 py-1 rounded font-bold">元に戻す</button>`;
   notif.classList.remove('hidden');
-  document.getElementById('undo-del-btn'].onclick = () => { if (lastDeletedRowData) { addRowToTable(lastDeletedRowData); lastDeletedRowData = null; notif.classList.add('hidden'); } };
+  document.getElementById('undo-del-btn').onclick = () => { if (lastDeletedRowData) { addRowToTable(lastDeletedRowData); lastDeletedRowData = null; notif.classList.add('hidden'); } };
   setTimeout(() => notif.classList.add('hidden'), 5000);
 }
 
@@ -602,7 +595,7 @@ function createEmptyKanjiPassageItem() {
     id: `passage_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     passageText: "",
     subItems: [
-      { id: `sub_${Date.now()}_1`, targetWord: "", reading: "", direction: "読み" }
+      { id: `sub_${Date.now()}_1`, targetWord: "", reading: "", direction: "書き" }
     ]
   };
 }
@@ -612,7 +605,7 @@ function renderKanjiTableRows(passages) {
   tbody.innerHTML = '';
 
   passages.forEach((passage, pIndex) => {
-    const subItems = passage.subItems && passage.subItems.length > 0 ? passage.subItems : [{ id: `sub_${Date.now()}`, targetWord: "", reading: "", direction: "読み" }];
+    const subItems = passage.subItems && passage.subItems.length > 0 ? passage.subItems : [{ id: `sub_${Date.now()}`, targetWord: "", reading: "", direction: "書き" }];
     
     subItems.forEach((sub, sIndex) => {
       const wrapper = document.createElement('tr');
@@ -623,15 +616,14 @@ function renderKanjiTableRows(passages) {
       let leftCellHtml = '';
       if (sIndex === 0) {
         leftCellHtml = `
-          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle w-10" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
-          <td class="p-2 text-center font-bold text-gray-500 row-index align-middle w-10" rowspan="${subItems.length}">${pIndex + 1}</td>
-          <td class="p-2 align-middle" rowspan="${subItems.length}"><textarea rows="3" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体...">${passage.passageText || ''}</textarea></td>
+          <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle w-10" title="ドラッグして移動" draggable="true" rowspan="${subItems.length + 1}">≡</td>
+          <td class="p-2 text-center font-bold text-gray-500 row-index align-middle w-10" rowspan="${subItems.length + 1}">${pIndex + 1}</td>
+          <td class="p-2 align-middle" rowspan="${subItems.length + 1}"><textarea rows="4" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体を入力...">${passage.passageText || ''}</textarea></td>
         `;
       }
 
       wrapper.innerHTML = `
-        <td colspan="7" class="p-0 relative">
-          <!-- iOS風スワイプ削除 -->
+        <td colspan="5" class="p-0 relative">
           <div class="absolute inset-y-0 right-0 w-24 bg-red-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer kanji-swipe-del">削除</div>
           <div class="flex items-center bg-white transition-transform duration-200 ease-out kanji-swipe-content">
             ${leftCellHtml}
@@ -667,27 +659,29 @@ function renderKanjiTableRows(passages) {
 
       if (sIndex === 0) {
         const handle = wrapper.querySelector('.drag-handle');
-        let draggedTr = null;
-        handle.addEventListener('dragstart', (e) => { draggedTr = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
-        handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedTr = null; });
-        wrapper.addEventListener('dragover', (e) => e.preventDefault());
-        wrapper.addEventListener('drop', (e) => {
-          e.preventDefault();
-          if (draggedTr && draggedTr !== wrapper) {
-            const currentPassages = collectCurrentKanjiPassages();
-            renderKanjiTableRows(currentPassages);
-          }
-        });
+        if (handle) {
+          let draggedTr = null;
+          handle.addEventListener('dragstart', (e) => { draggedTr = wrapper; wrapper.classList.add('opacity-40'); e.dataTransfer.effectAllowed = 'move'; });
+          handle.addEventListener('dragend', () => { wrapper.classList.remove('opacity-40'); draggedTr = null; });
+          wrapper.addEventListener('dragover', (e) => e.preventDefault());
+          wrapper.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (draggedTr && draggedTr !== wrapper) {
+              const currentPassages = collectCurrentKanjiPassages();
+              renderKanjiTableRows(currentPassages);
+            }
+          });
+        }
       }
 
       tbody.appendChild(wrapper);
     });
 
-    // 💡 傍線追加ボタンを「一番下の傍線部のさらに下」に配置
+    // 傍線追加ボタンを一番下のさらに下に配置
     const addRowTr = document.createElement('tr');
     addRowTr.className = "bg-amber-50/50 border-b";
     addRowTr.innerHTML = `
-      <td colspan="6" class="p-2 text-center">
+      <td colspan="4" class="p-2 text-center">
         <button type="button" class="add-sub-btn bg-amber-200 hover:bg-amber-300 text-amber-900 px-4 py-1.5 rounded text-xs font-bold shadow-sm transition">+ この文章に傍線部を追加する</button>
       </td>
     `;
@@ -695,7 +689,7 @@ function renderKanjiTableRows(passages) {
       const currentPassages = collectCurrentKanjiPassages();
       const targetP = currentPassages.find(p => p.id === passage.id);
       if (targetP) {
-        targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "読み" });
+        targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "書き" });
       }
       renderKanjiTableRows(currentPassages);
     });
@@ -743,18 +737,14 @@ function collectCurrentKanjiPassages() {
       passageMap.get(passageId).passageText = passageInput.value.trim();
     }
 
-    passageMap.set(passageId, {
-      ...passageMap.get(passageId),
-      subItems: [
-        ...passageMap.get(passageId).subItems,
-        {
-          id: subId,
-          targetWord: wordInput ? wordInput.value.trim() : "",
-          reading: readingInput ? readingInput.value.trim() : "",
-          direction: dirSelect ? dirSelect.value : "読み"
-        }
-      ]
-    });
+    if (wordInput || readingInput) {
+      passageMap.get(passageId).subItems.push({
+        id: subId,
+        targetWord: wordInput ? wordInput.value.trim() : "",
+        reading: readingInput ? readingInput.value.trim() : "",
+        direction: dirSelect ? dirSelect.value : "書き"
+      });
+    }
   });
 
   return Array.from(passageMap.values());
@@ -779,7 +769,7 @@ document.getElementById('save-kanji-doc-btn').addEventListener('click', async ()
   alert("漢字問題を保存しました！"); closeKanjiRegisterForm();
 });
 
-// --- 漢字問題 演習プレイヤー (カタカナ自動変換・番号付き) ---
+// --- 漢字問題 演習プレイヤー ---
 let activeKanjiData = null, kanjiExerciseQueue = [], kanjiRetryQueue = [], currentKanjiIndex = 0, kanjiTotalCount = 0, isKanjiRetryLoop = false;
 
 function openKanjiConfigModal(tableData) {
@@ -824,7 +814,6 @@ document.getElementById('start-kanji-exercise-btn').addEventListener('click', ()
   renderKanjiExerciseCurrentItem();
 });
 
-// ひらがなをカタカナに変換するヘルパー関数
 function hiraganaToKatakana(str) {
   return str.replace(/[\u3041-\u3096]/g, match => String.fromCharCode(match.charCodeAt(0) + 0x60));
 }
@@ -867,8 +856,6 @@ function renderKanjiExerciseCurrentItem() {
   passageItem.subItems.forEach((sub, idx) => {
     const subId = sub.id;
     let ansText = sub.direction === '読み' ? sub.reading : sub.targetWord;
-    
-    // 💡 要望対応：書き取りの場合は登録された読み・解答をカタカナに変換して表示
     if (sub.direction === '書き') {
       ansText = hiraganaToKatakana(sub.reading || sub.targetWord);
     }
