@@ -3,13 +3,14 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { renderTableList } from "./keywords.js";
 import { renderKanjiTableList } from "./kanji.js";
+import { renderTimelineList } from "./timeline.js";
 
 const firebaseConfig = { apiKey: "AIzaSyAat1qoigRFAQtIwCHweMeO6P0qTmR10_8", authDomain: "mondai-choco.firebaseapp.com", projectId: "mondai-choco", appId: "1:41081435290:web:f5237845a870e11e719b23" };
 let app, auth;
 export let db;
 export let currentUser = null;
 
-let selectedDocId = null, currentDocData = null, allDocuments = [], allCollections = [], allTables = [], allKanjiTables = [], currentMainView = 'documents';
+let selectedDocId = null, currentDocData = null, allDocuments = [], allCollections = [], allTables = [], allKanjiTables = [], allTimelines = [], currentMainView = 'documents';
 let collectionPlayList = [], collectionPlayIndex = 0, isPlayingCollection = false, isContinuousAnswerOn = false;
 
 try {
@@ -60,9 +61,10 @@ document.getElementById('nav-docs').addEventListener('click', () => { currentMai
 document.getElementById('nav-collections').addEventListener('click', () => { currentMainView = 'collections'; isPlayingCollection = false; setActiveNavTab('nav-collections'); renderCurrentView(); });
 document.getElementById('nav-tables').addEventListener('click', () => { currentMainView = 'tables'; isPlayingCollection = false; setActiveNavTab('nav-tables'); renderCurrentView(); });
 document.getElementById('nav-kanji').addEventListener('click', () => { currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); });
+document.getElementById('nav-timeline').addEventListener('click', () => { currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); });
 
 function setActiveNavTab(tabId) {
-  ['nav-docs', 'nav-collections', 'nav-tables', 'nav-kanji'].forEach(id => {
+  ['nav-docs', 'nav-collections', 'nav-tables', 'nav-kanji', 'nav-timeline'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) btn.className = id === tabId ? "flex-1 py-1 font-bold text-blue-600 bg-white rounded shadow-sm text-[11px]" : "flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]";
   });
@@ -83,6 +85,9 @@ function setupRealtimeListeners() {
   onSnapshot(query(collection(db, "users", currentUser.uid, "kanjiTables"), orderBy("updatedAt", "desc")), snap => {
     allKanjiTables = []; snap.forEach(d => allKanjiTables.push({ id: d.id, ...d.data() })); if (currentMainView === 'kanji') renderCurrentView();
   });
+  onSnapshot(query(collection(db, "users", currentUser.uid, "timelineTables"), orderBy("updatedAt", "desc")), snap => {
+    allTimelines = []; snap.forEach(d => allTimelines.push({ id: d.id, ...d.data() })); if (currentMainView === 'timeline') renderCurrentView();
+  });
 }
 
 function detachRealtimeListeners() {}
@@ -91,6 +96,7 @@ function renderCurrentView() {
   else if (currentMainView === 'collections') renderCollectionList(allCollections);
   else if (currentMainView === 'tables') renderTableList(allTables);
   else if (currentMainView === 'kanji') renderKanjiTableList(allKanjiTables);
+  else if (currentMainView === 'timeline') renderTimelineList(allTimelines);
 }
 
 function renderDocumentList(docs) {
