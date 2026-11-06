@@ -116,7 +116,7 @@
         </div>
       </div>
 
-      <!-- 3. 一問一答 演習ビュー -->
+      <!-- 3. 一問一答 演習ビュー (復活・選択肢対応) -->
       <div id="table-player-container" class="hidden flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden max-w-3xl mx-auto w-full p-6 space-y-6">
         <div class="flex justify-between items-center border-b pb-3">
           <h2 id="table-player-title" class="text-base font-bold text-slate-800">一問一答 演習</h2>
@@ -132,6 +132,9 @@
             <div id="t-ex-question" class="text-sm font-medium text-slate-800"></div>
             <div id="t-ex-q-image-area"></div>
           </div>
+          <!-- 選択肢表示エリア -->
+          <div id="t-ex-choices-area" class="space-y-2 hidden"></div>
+
           <div id="t-ex-answer-area" class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 hidden">
             <div class="text-xs font-bold text-emerald-700">解答：</div>
             <div id="t-ex-answer" class="text-sm font-bold text-slate-900"></div>
@@ -166,9 +169,8 @@
           </div>
           <div class="p-6 bg-slate-50 border rounded-xl space-y-4">
             <div class="text-xs font-bold text-amber-700 flex justify-between">
-              <span>【文章問題】 (<span id="kanji-dir-label">読み</span>)</span>
+              <span>【文章問題】</span>
             </div>
-            <!-- 傍線部が太字ゴシック下線でスタイリングされる文章エリア -->
             <div id="kanji-ex-passage" class="text-base font-medium text-slate-900 leading-relaxed p-4 bg-white border rounded-lg kanji-passage-box"></div>
           </div>
 
@@ -221,8 +223,8 @@
         <button id="save-doc-btn" class="w-full bg-blue-600 text-white font-bold py-2 rounded text-xs">保存する</button>
       </div>
 
-      <!-- 5. 一問一答表 登録・編集エディタ画面 -->
-      <div id="table-register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-5xl mx-auto w-full">
+      <!-- 5. 一問一答表 登録・編集エディタ画面 (選択肢対応) -->
+      <div id="table-register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-6xl mx-auto w-full">
         <div class="flex justify-between items-center border-b pb-3">
           <h2 id="table-form-header-title" class="text-base font-bold text-slate-800">一問一答 表形式の作成・編集</h2>
           <button id="cancel-table-register-btn" class="text-xs text-slate-500">キャンセル</button>
@@ -236,14 +238,17 @@
           <table class="w-full text-xs text-left border-collapse" id="qa-spread-table">
             <thead>
               <tr class="bg-slate-200 text-slate-700 border-b">
-                <th class="p-2 w-12 text-center">並び替え</th>
-                <th class="p-2 w-10 text-center">#</th>
-                <th class="p-2 w-1/4">A列: 問題</th>
-                <th class="p-2 w-20 text-center">B列: 画像</th>
-                <th class="p-2 w-1/4">C列: 解答</th>
-                <th class="p-2 w-28 text-center">D列: 重要度</th>
-                <th class="p-2 w-1/4">E列: 解説 / 参照</th>
-                <th class="p-2 w-12 text-center">操作</th>
+                <th class="p-2 w-10 text-center">並び替え</th>
+                <th class="p-2 w-8 text-center">#</th>
+                <th class="p-2 w-1/5">問題文</th>
+                <th class="p-2 w-16 text-center">問題画像</th>
+                <th class="p-2 w-1/6">解答</th>
+                <th class="p-2 w-16 text-center">選択肢形式</th>
+                <th class="p-2 w-1/5">誤答選択肢(カンマ区切り)</th>
+                <th class="p-2 w-16 text-center">選択肢画像</th>
+                <th class="p-2 w-20 text-center">重要度</th>
+                <th class="p-2 w-1/6">解説</th>
+                <th class="p-2 w-10 text-center">操作</th>
               </tr>
             </thead>
             <tbody id="qa-table-tbody" class="space-y-1"></tbody>
@@ -290,10 +295,11 @@
   <div id="qa-image-modal" class="fixed inset-0 bg-black bg-opacity-40 z-50 hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-xl shadow-lg max-w-sm w-full p-5 space-y-4">
       <div class="flex justify-between items-center border-b pb-2">
-        <h3 class="font-bold text-slate-800 text-sm">問題画像の添付</h3>
+        <h3 id="qa-modal-title" class="font-bold text-slate-800 text-sm">問題画像の添付</h3>
         <button id="close-qa-img-modal" class="text-gray-400 font-bold">✕</button>
       </div>
       <input type="hidden" id="modal-target-row-id" value="">
+      <input type="hidden" id="modal-target-type" value="question">
       <input type="file" id="qa-modal-file-input" accept="image/*,.heic,.HEIC" class="block w-full text-xs text-slate-500"/>
       <div id="qa-modal-img-preview" class="text-center min-h-[100px] flex items-center justify-center border rounded bg-slate-50"><span class="text-gray-400 text-xs">画像未選択</span></div>
       <div class="flex gap-2">
@@ -344,7 +350,7 @@
       <div class="space-y-3 text-xs">
         <div><label class="block font-semibold mb-1">出題順序</label><select id="kanji-config-order-select" class="w-full border rounded p-2"><option value="sequential">順番通り</option><option value="random">ランダム</option></select></div>
         <div><label class="block font-semibold mb-1">範囲</label><select id="kanji-config-scope-select" class="w-full border rounded p-2"><option value="all">全問対象</option><option value="mistaken">間違えた問題のみ</option></select></div>
-        <div><label class="block font-semibold mb-1">出題形式の絞り込み</label><select id="kanji-config-dir-select" class="w-full border rounded p-2"><option value="all">すべて (読み/書き)</option><option value="読み">読み のみ</option><option value="書き">書き のみ</option></select></div>
+        <div><label class="block font-semibold mb-1">出題形式の絞り込み</label><select id="kanji-config-dir-select" class="w-full border rounded p-2"><option value="all">すべて (読み/書き/読み書き)</option><option value="読み">読み のみ</option><option value="書き">書き のみ</option></select></div>
       </div>
       <button id="start-kanji-exercise-btn" class="w-full bg-amber-600 text-white font-bold py-2.5 rounded text-xs">漢字演習を開始する 🚀</button>
     </div>
