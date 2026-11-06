@@ -543,6 +543,9 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, importances, items, updatedAt: Date.now() }, { merge: true });
   alert("保存しました！"); closeTableRegisterForm();
 });
+
+
+
 // --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
@@ -677,7 +680,6 @@ function renderKanjiTableRows(passages) {
       tbody.appendChild(wrapper);
     });
 
-    // 傍線追加ボタンを一番下のさらに下に配置
     const addRowTr = document.createElement('tr');
     addRowTr.className = "bg-amber-50/50 border-b";
     addRowTr.innerHTML = `
@@ -839,12 +841,33 @@ function renderKanjiExerciseCurrentItem() {
   const hasMultiple = passageItem.subItems && passageItem.subItems.length > 1;
 
   if (passageItem.subItems) {
+    // 💡 重複する単語がある場合、最初に出現したものだけに番号と傍線をつけ、2回目以降は傍線にしない
+    const seenWords = new Set();
+
     passageItem.subItems.forEach((sub, idx) => {
       if (sub.targetWord) {
         const escapedWord = sub.targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(${escapedWord})`, 'g');
-        const badge = hasMultiple ? `(${idx + 1})` : '';
-        formattedPassage = formattedPassage.replace(regex, `<span class="kanji-target-underline"><b>${badge}$1</b></span>`);
+        const regex = new RegExp(escapedWord, 'g');
+
+        if (!seenWords.has(sub.targetWord)) {
+          seenWords.add(sub.targetWord);
+          
+          // 1回目の出現：傍線＆番号付きにする
+          let displayWord = sub.targetWord;
+          if (sub.direction === '書き') {
+            displayWord = hiraganaToKatakana(sub.reading || sub.targetWord);
+          }
+          const badge = hasMultiple ? `(${idx + 1})` : '';
+          
+          let matchCount = 0;
+          formattedPassage = formattedPassage.replace(regex, (match) => {
+            matchCount++;
+            if (matchCount === 1) {
+              return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
+            }
+            return match;
+          });
+        }
       }
     });
   }
