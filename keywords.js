@@ -5,7 +5,6 @@ let activeTableData = null;
 let exerciseQueue = [], retryQueue = [], currentExerciseIndex = 0, exerciseTotalCount = 0, isRetryLoop = false;
 let activeModalRowId = null, activeModalType = 'question';
 
-// --- 一問一答 リスト描画 ---
 export function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -51,6 +50,7 @@ document.getElementById('start-table-exercise-btn').addEventListener('click', ()
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.add('hidden');
+  document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.remove('hidden');
   document.getElementById('table-exercise-content').classList.remove('hidden');
@@ -114,24 +114,6 @@ function renderTableExerciseCurrentItem() {
         }
         document.getElementById('t-ex-show-ans-btn').click();
       };
-      grid.appendChild(grid); // 修正：grid.appendChild(btn)
-    });
-    // 上記のバグ修正
-    grid.innerHTML = '';
-    allChoices.forEach((ch, idx) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = "p-3 border rounded-lg bg-white hover:bg-slate-50 text-left text-xs font-medium flex items-center gap-3 transition shadow-xs";
-      btn.innerHTML = `<span class="font-bold text-blue-600">${idx + 1}.</span> <span>${ch.text}</span> ${ch.img ? `<img src="${ch.img}" class="max-h-12 ml-auto rounded"/>` : ''}`;
-      btn.onclick = () => {
-        grid.querySelectorAll('button').forEach(b => b.disabled = true);
-        if (ch.isCorrect) {
-          btn.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
-        } else {
-          btn.className = "p-3 border-2 border-red-500 rounded-lg bg-red-50 text-left text-xs font-bold flex items-center gap-3";
-        }
-        document.getElementById('t-ex-show-ans-btn').click();
-      };
       grid.appendChild(btn);
     });
     choicesArea.appendChild(grid);
@@ -175,7 +157,6 @@ document.getElementById('exit-table-player-btn').addEventListener('click', () =>
   document.getElementById('view-mode-container').classList.remove('hidden');
 });
 
-// --- エディタ・画像モーダル関連 ---
 document.getElementById('btn-nav-table-register').addEventListener('click', () => openTableRegisterForm(null));
 document.getElementById('cancel-table-register-btn').addEventListener('click', closeTableRegisterForm);
 
@@ -184,6 +165,7 @@ function openTableRegisterForm(tableData = null) {
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.add('hidden');
+  document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('kanji-register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.remove('hidden');
