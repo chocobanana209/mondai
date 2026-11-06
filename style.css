@@ -5,6 +5,13 @@ aside.collapsed {
   border-right: none;
 }
 
+/* サイドバーが畳まれたときのスタイル */
+    #sidebar.collapsed {
+      width: 0 !important;
+      min-width: 0 !important;
+      border-right: none !important;
+    }
+
 /* スクロールバーのカスタマイズ */
 ::-webkit-scrollbar {
   width: 6px;
