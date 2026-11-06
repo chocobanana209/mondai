@@ -467,13 +467,6 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
 
 
 
-
-
-
-
-
-
-
 // --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
