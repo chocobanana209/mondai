@@ -18,7 +18,7 @@ export function renderKanjiTableList(tables) {
           <button class="del-kanji text-red-500 font-bold">削除</button>
         </div>
       </div>
-      <div class="text-[10px] text-amber-700">文章問題数: ${t.passages ? t.passages.length : 0}問</div>
+      <div class="text-[10px] text-amber-700">教科: ${t.subject || '未設定'} | 文章問題数: ${t.passages ? t.passages.length : 0}問</div>
       <button class="start-kanji-exercise-btn w-full bg-amber-600 hover:bg-amber-700 text-white py-1.5 rounded font-bold">漢字演習を始める ✍️</button>
     `;
     item.querySelector('.start-kanji-exercise-btn').addEventListener('click', (e) => { e.stopPropagation(); openKanjiConfigModal(t); });
@@ -36,6 +36,7 @@ function openKanjiRegisterForm(kanjiData = null) {
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.add('hidden');
+  document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.add('hidden');
@@ -43,6 +44,7 @@ function openKanjiRegisterForm(kanjiData = null) {
 
   document.getElementById('editing-kanji-id').value = kanjiData ? kanjiData.id : '';
   document.getElementById('kanji-name-input').value = kanjiData ? kanjiData.title : '';
+  document.getElementById('kanji-subject-input').value = kanjiData ? (kanjiData.subject || "") : "";
   renderKanjiTableRows(kanjiData ? kanjiData.passages || [] : [createEmptyKanjiPassageItem()]);
 }
 
@@ -230,12 +232,13 @@ document.getElementById('save-kanji-doc-btn').addEventListener('click', async ()
   if (!currentUser) return;
   const title = document.getElementById('kanji-name-input').value.trim();
   if (!title) { alert("タイトルを入力してください。"); return; }
+  const subject = document.getElementById('kanji-subject-input').value.trim() || "未設定";
 
   const passages = collectCurrentKanjiPassages();
   if (passages.length === 0) { alert("少なくとも1つ以上の文章問題を入力してください。"); return; }
 
   const kanjiId = document.getElementById('editing-kanji-id').value || `kanji_${Date.now()}`;
-  await setDoc(doc(db, "users", currentUser.uid, "kanjiTables", kanjiId), { title, passages, updatedAt: Date.now() }, { merge: true });
+  await setDoc(doc(db, "users", currentUser.uid, "kanjiTables", kanjiId), { title, subject, passages, updatedAt: Date.now() }, { merge: true });
   alert("漢字問題を保存しました！"); closeKanjiRegisterForm();
 });
 
@@ -277,6 +280,7 @@ document.getElementById('start-kanji-exercise-btn').addEventListener('click', ()
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
+  document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('timeline-register-form-container').classList.add('hidden');
   document.getElementById('kanji-register-form-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.remove('hidden');
@@ -389,12 +393,14 @@ function renderKanjiExerciseCurrentItem() {
 
     rowDiv.querySelector('.kanji-sub-correct').addEventListener('click', (e) => {
       localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${subId}`, 'correct');
+      localStorage.removeItem(`kanji_mistake_time_${activeKanjiData.id}_${subId}`);
       e.target.className = "px-3 py-1 rounded text-xs font-bold bg-green-600 text-white border border-green-600";
       e.target.nextElementSibling.className = "px-3 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
     });
 
     rowDiv.querySelector('.kanji-sub-incorrect').addEventListener('click', (e) => {
       localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${subId}`, 'incorrect');
+      localStorage.setItem(`kanji_mistake_time_${activeKanjiData.id}_${subId}`, Date.now());
       e.target.className = "px-3 py-1 rounded text-xs font-bold bg-red-600 text-white border border-red-600";
       e.target.previousElementSibling.className = "px-3 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
       if (!kanjiRetryQueue.includes(passageItem)) kanjiRetryQueue.push(passageItem);
