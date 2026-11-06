@@ -35,3 +35,16 @@ aside.collapsed {
   border-radius: 0.375rem;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
 }
+
+/* 漢字問題の傍線部（太字ゴシック体の下線） */
+.kanji-target-underline {
+  font-family: "Hiragino Sans", "Meiryo", sans-serif;
+  font-weight: bold;
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 1px;
+}
+
+.kanji-passage-box {
+  font-family: "Hiragino Sans", "Meiryo", sans-serif;
+  line-height: 2.2;
+}
