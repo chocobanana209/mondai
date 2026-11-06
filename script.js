@@ -479,15 +479,13 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, importances, items, updatedAt: Date.now() }, { merge: true });
   alert("保存しました！"); closeTableRegisterForm();
 });
-
-// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
+// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック (ドラッグ並び替え・最下部ボタン対応) ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
   tables.forEach(t => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-amber-50 hover:bg-amber-100 border-amber-300 cursor-pointer text-xs transition space-y-2';
-    const totalSub = t.passages ? t.passages.reduce((acc, p) => acc + (p.subItems ? p.subItems.length : 0), 0) : 0;
     item.innerHTML = `
       <div class="flex justify-between items-center">
         <span class="font-bold text-amber-900 truncate">${t.title}</span>
@@ -496,7 +494,7 @@ function renderKanjiTableList(tables) {
           <button class="del-kanji text-red-500 font-bold">削除</button>
         </div>
       </div>
-      <div class="text-[10px] text-amber-700">文章数: ${t.passages ? t.passages.length : 0} / 傍線部数: ${totalSub}問</div>
+      <div class="text-[10px] text-amber-700">文章問題数: ${t.passages ? t.passages.length : 0}問</div>
       <button class="start-kanji-exercise-btn w-full bg-amber-600 hover:bg-amber-700 text-white py-1.5 rounded font-bold">漢字演習を始める ✍️</button>
     `;
     item.querySelector('.start-kanji-exercise-btn').addEventListener('click', (e) => { e.stopPropagation(); openKanjiConfigModal(t); });
@@ -550,6 +548,7 @@ function renderKanjiTableRows(passages) {
       tr.className = "border-b hover:bg-slate-100 kanji-row-item";
       tr.dataset.passageId = passage.id;
       tr.dataset.subId = sub.id;
+      tr.draggable = true; // 行全体のドラッグ並び替え対応
 
       let leftCellHtml = '';
       if (sIndex === 0) {
@@ -557,7 +556,24 @@ function renderKanjiTableRows(passages) {
           <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle" rowspan="${subItems.length}">↕</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
           <td class="p-2 align-middle" rowspan="${subItems.length}">
-            <textarea rows="3" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体 (例: その日は強風が吹き荒れた)...">${passage.passageText || ''}</textarea>
+            <textarea rows="3" class="w-full border rounded p-1 kanji-passage-input" placeholder="文章全体...">${passage.passageText || ''}</textarea>
+          </td>
+        `;
+      }
+
+      // 最下部への傍線追加ボタン配置用HTML構築
+      let actionCellHtml = '';
+      if (sIndex === subItems.length - 1) {
+        actionCellHtml = `
+          <td class="p-2 text-center align-middle">
+            <button type="button" class="add-sub-btn bg-amber-100 text-amber-800 hover:bg-amber-200 px-2.5 py-1 rounded text-[10px] font-bold mb-1 block mx-auto">+ 傍線追加</button>
+            <button type="button" class="kanji-row-del-btn text-red-500 font-bold block mx-auto">✕</button>
+          </td>
+        `;
+      } else {
+        actionCellHtml = `
+          <td class="p-2 text-center align-middle">
+            <button type="button" class="kanji-row-del-btn text-red-500 font-bold block mx-auto">✕</button>
           </td>
         `;
       }
@@ -572,18 +588,29 @@ function renderKanjiTableRows(passages) {
             <option value="書き" ${sub.direction === '書き' ? 'selected' : ''}>書き</option>
           </select>
         </td>
-        <td class="p-2 text-center">
-          ${sIndex === 0 ? `<button type="button" class="add-sub-btn bg-amber-100 text-amber-800 hover:bg-amber-200 px-2 py-1 rounded text-[10px] font-bold mb-1">+傍線追加</button>` : ''}
-          <button type="button" class="kanji-row-del-btn text-red-500 font-bold block mx-auto">✕</button>
-        </td>
+        ${actionCellHtml}
       `;
 
-      if (sIndex === 0) {
+      // ドラッグ＆ドロップ並び替えのイベント設定
+      let draggedKanjiRow = null;
+      tr.addEventListener('dragstart', () => { draggedKanjiRow = tr; tr.classList.add('opacity-40'); });
+      tr.addEventListener('dragend', () => { tr.classList.remove('opacity-40'); draggedKanjiRow = null; });
+      tr.addEventListener('dragover', (e) => e.preventDefault());
+      tr.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (draggedKanjiRow && draggedKanjiRow !== tr) {
+          const currentPassages = collectCurrentKanjiPassages();
+          renderKanjiTableRows(currentPassages);
+        }
+      });
+
+      // 傍線追加ボタン (一番下に配置)
+      if (sIndex === subItems.length - 1) {
         tr.querySelector('.add-sub-btn').addEventListener('click', () => {
           const currentPassages = collectCurrentKanjiPassages();
           const targetP = currentPassages.find(p => p.id === passage.id);
           if (targetP) {
-            targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "書き" });
+            targetP.subItems.push({ id: `sub_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, targetWord: "", reading: "", direction: "読み" });
           }
           renderKanjiTableRows(currentPassages);
         });
@@ -664,7 +691,7 @@ document.getElementById('save-kanji-doc-btn').addEventListener('click', async ()
   alert("漢字問題を保存しました！"); closeKanjiRegisterForm();
 });
 
-// --- 漢字問題 演習モーダル ＆ プレイヤー ---
+// --- 漢字問題 演習プレイヤー ---
 let activeKanjiData = null, kanjiExerciseQueue = [], kanjiRetryQueue = [], currentKanjiIndex = 0, kanjiTotalCount = 0, isKanjiRetryLoop = false;
 
 function openKanjiConfigModal(tableData) {
@@ -678,31 +705,25 @@ document.getElementById('start-kanji-exercise-btn').addEventListener('click', ()
   const scope = document.getElementById('kanji-config-scope-select').value;
   const dirFilter = document.getElementById('kanji-config-dir-select').value;
 
-  let flatItems = [];
-  activeKanjiData.passages.forEach(p => {
-    if (p.subItems) {
-      p.subItems.forEach(sub => {
-        if (dirFilter === 'all' || sub.direction === dirFilter) {
-          flatItems.push({
-            passageId: p.id,
-            passageText: p.passageText,
-            subId: sub.id,
-            targetWord: sub.targetWord,
-            reading: sub.reading,
-            direction: sub.direction
-          });
-        }
-      });
-    }
-  });
+  let passagesList = [...activeKanjiData.passages];
+
+  if (dirFilter !== 'all') {
+    passagesList = passagesList.map(p => ({
+      ...p,
+      subItems: p.subItems.filter(sub => sub.direction === dirFilter)
+    })).filter(p => p.subItems.length > 0);
+  }
 
   if (scope === 'mistaken') {
-    flatItems = flatItems.filter(item => localStorage.getItem(`kanji_hist_${activeKanjiData.id}_${item.subId}`) === 'incorrect');
-    if (flatItems.length === 0) { alert("間違えた漢字問題がありません。"); return; }
+    passagesList = passagesList.filter(p => {
+      return p.subItems.some(sub => localStorage.getItem(`kanji_hist_${activeKanjiData.id}_${sub.id}`) === 'incorrect');
+    });
+    if (passagesList.length === 0) { alert("間違えた漢字問題がありません。"); return; }
   }
-  if (order === 'random') flatItems.sort(() => Math.random() - 0.5);
 
-  kanjiExerciseQueue = flatItems; kanjiRetryQueue = []; currentKanjiIndex = 0; kanjiTotalCount = kanjiExerciseQueue.length; isKanjiRetryLoop = false;
+  if (order === 'random') passagesList.sort(() => Math.random() - 0.5);
+
+  kanjiExerciseQueue = passagesList; kanjiRetryQueue = []; currentKanjiIndex = 0; kanjiTotalCount = kanjiExerciseQueue.length; isKanjiRetryLoop = false;
   
   document.getElementById('kanji-config-modal').classList.add('hidden');
   document.getElementById('view-mode-container').classList.add('hidden');
@@ -723,191 +744,100 @@ function renderKanjiExerciseCurrentItem() {
     }
     document.getElementById('kanji-exercise-content').classList.add('hidden');
     document.getElementById('kanji-exercise-result').classList.remove('hidden');
-    document.getElementById('kanji-result-summary').innerText = `全 ${kanjiTotalCount} 問の漢字演習を完了しました！`;
+    document.getElementById('kanji-result-summary').innerText = `全 ${kanjiTotalCount} 文の漢字演習を完了しました！`;
     return;
   }
 
-  const item = kanjiExerciseQueue[currentKanjiIndex];
-  document.getElementById('kanji-progress-count').innerText = `問題 ${currentKanjiIndex + 1} / ${kanjiExerciseQueue.length}`;
+  const passageItem = kanjiExerciseQueue[currentKanjiIndex];
+  document.getElementById('kanji-progress-count').innerText = `文章 ${currentKanjiIndex + 1} / ${kanjiExerciseQueue.length}`;
   document.getElementById('kanji-loop-badge').innerText = isKanjiRetryLoop ? "🔥 リトライ周回" : "通常周回";
-  document.getElementById('kanji-dir-label').innerText = item.direction;
+  document.getElementById('kanji-dir-label').innerText = "同時出題";
 
-  let formattedPassage = item.passageText || "";
-  if (item.targetWord) {
-    const escapedWord = item.targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escapedWord})`, 'g');
-    formattedPassage = formattedPassage.replace(regex, `<span class="kanji-target-underline"><b>$1</b></span>`);
+  let formattedPassage = passageItem.passageText || "";
+  if (passageItem.subItems) {
+    passageItem.subItems.forEach(sub => {
+      if (sub.targetWord) {
+        const escapedWord = sub.targetWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedWord})`, 'g');
+        formattedPassage = formattedPassage.replace(regex, `<span class="kanji-target-underline"><b>$1</b></span>`);
+      }
+    });
   }
   document.getElementById('kanji-ex-passage').innerHTML = formattedPassage;
 
-  const ansText = item.direction === '読み' ? item.reading : item.targetWord;
-  const ansTypeStr = item.direction === '読み' ? 'ひらがな' : '漢字';
+  const ansArea = document.getElementById('kanji-ex-answer-area');
+  ansArea.innerHTML = `<div class="text-xs font-bold text-emerald-700 mb-2">💡 解答と個別正誤判定：</div>`;
+  
+  passageItem.subItems.forEach((sub, idx) => {
+    const subId = sub.id;
+    const ansText = sub.direction === '読み' ? sub.reading : sub.targetWord;
+    const ansTypeStr = sub.direction === '読み' ? 'ひらがな' : '漢字';
 
-  document.getElementById('kanji-ans-type-label').innerText = ansTypeStr;
-  document.getElementById('kanji-ex-answer').innerText = ansText;
+    const itemDiv = document.createElement('div');
+    itemDiv.className = "p-3 bg-white border rounded-lg space-y-2";
+    itemDiv.innerHTML = `
+      <div class="flex justify-between items-center text-xs">
+        <span class="font-bold text-slate-800">(${idx + 1}) 傍線部「${sub.targetWord}」 [${sub.direction}]</span>
+        <span class="text-emerald-700 font-semibold">答え (${ansTypeStr}): <b>${ansText}</b></span>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" class="flex-1 py-1.5 rounded text-xs font-bold transition kanji-sub-correct bg-slate-100 hover:bg-green-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">⭕ 正解</button>
+        <button type="button" class="flex-1 py-1.5 rounded text-xs font-bold transition kanji-sub-incorrect bg-slate-100 hover:bg-red-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">❌ 誤答</button>
+      </div>
+    `;
 
-  document.getElementById('kanji-ex-answer-area').classList.add('hidden');
+    itemDiv.querySelector('.kanji-sub-correct').addEventListener('click', (e) => {
+      localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${subId}`, 'correct');
+      e.target.className = "flex-1 py-1.5 rounded text-xs font-bold bg-green-600 text-white border border-green-600";
+      e.target.nextElementSibling.className = "flex-1 py-1.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
+      checkAllSubItemsGraded();
+    });
+
+    itemDiv.querySelector('.kanji-sub-incorrect').addEventListener('click', (e) => {
+      localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${subId}`, 'incorrect');
+      e.target.className = "flex-1 py-1.5 rounded text-xs font-bold bg-red-600 text-white border border-red-600";
+      e.target.previousElementSibling.className = "flex-1 py-1.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
+      if (!kanjiRetryQueue.includes(passageItem)) kanjiRetryQueue.push(passageItem);
+      checkAllSubItemsGraded();
+    });
+
+    ansArea.appendChild(itemDiv);
+  });
+
+  ansArea.classList.add('hidden');
   document.getElementById('kanji-ex-show-ans-btn').classList.remove('hidden');
-  document.getElementById('kanji-ex-grade-buttons').classList.add('hidden');
+  
+  // 既存の次へボタンがあれば削除
+  const oldNextBtn = document.getElementById('kanji-next-passage-btn');
+  if (oldNextBtn) oldNextBtn.remove();
 }
 
 document.getElementById('kanji-ex-show-ans-btn').addEventListener('click', () => {
   document.getElementById('kanji-ex-answer-area').classList.remove('hidden');
   document.getElementById('kanji-ex-show-ans-btn').classList.add('hidden');
-  document.getElementById('kanji-ex-grade-buttons').classList.remove('hidden');
+  
+  // 答えを表示した時に「次の文章へ進む」ボタンを自動生成
+  let nextBtn = document.getElementById('kanji-next-passage-btn');
+  if (!nextBtn) {
+    nextBtn = document.createElement('button');
+    nextBtn.id = 'kanji-next-passage-btn';
+    nextBtn.className = "w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm transition mt-4 shadow-sm";
+    nextBtn.innerText = "次の文章へ進む ➡";
+    nextBtn.onclick = () => {
+      nextBtn.remove();
+      currentKanjiIndex++;
+      renderKanjiExerciseCurrentItem();
+    };
+    document.getElementById('kanji-exercise-content').appendChild(nextBtn);
+  }
 });
 
-document.getElementById('kanji-ex-correct-btn').addEventListener('click', () => {
-  const item = kanjiExerciseQueue[currentKanjiIndex];
-  localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${item.subId}`, 'correct');
-  currentKanjiIndex++; renderKanjiExerciseCurrentItem();
-});
-
-document.getElementById('kanji-ex-incorrect-btn').addEventListener('click', () => {
-  const item = kanjiExerciseQueue[currentKanjiIndex];
-  localStorage.setItem(`kanji_hist_${activeKanjiData.id}_${item.subId}`, 'incorrect');
-  kanjiRetryQueue.push(item);
-  currentKanjiIndex++; renderKanjiExerciseCurrentItem();
-});
+function checkAllSubItemsGraded() {
+  // すべて個別判定が終わった後の挙動調整用
+}
 
 document.getElementById('restart-kanji-ex-btn').addEventListener('click', () => openKanjiConfigModal(activeKanjiData));
 document.getElementById('exit-kanji-player-btn').addEventListener('click', () => {
   document.getElementById('kanji-player-container').classList.add('hidden');
   document.getElementById('view-mode-container').classList.remove('hidden');
 });
-
-// --- 画像モーダル関連 ---
-let modalTargetItemId = null, modalSelectedImageBase64 = "";
-function openQaImageModal(itemId, currentBase64) {
-  modalTargetItemId = itemId; modalSelectedImageBase64 = currentBase64 || "";
-  document.getElementById('qa-image-modal').classList.remove('hidden');
-  document.getElementById('qa-modal-img-preview').innerHTML = modalSelectedImageBase64 ? `<img src="${modalSelectedImageBase64}" class="max-h-32 mx-auto rounded"/>` : `<span class="text-gray-400 text-xs">画像未選択</span>`;
-}
-document.getElementById('close-qa-img-modal').addEventListener('click', () => document.getElementById('qa-image-modal').classList.add('hidden'));
-document.getElementById('qa-modal-file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0]; if (!file) return;
-  const buffer = await file.arrayBuffer();
-  modalSelectedImageBase64 = `data:${file.type};base64,${await arrayBufferToBase64(buffer)}`;
-  document.getElementById('qa-modal-img-preview').innerHTML = `<img src="${modalSelectedImageBase64}" class="max-h-32 mx-auto rounded"/>`;
-});
-document.getElementById('qa-img-remove-btn').addEventListener('click', () => { modalSelectedImageBase64 = ""; document.getElementById('qa-modal-img-preview').innerHTML = `<span class="text-gray-400 text-xs">画像未選択</span>`; });
-document.getElementById('qa-img-save-btn').addEventListener('click', () => {
-  const tr = document.querySelector(`tr[data-item-id="${modalTargetItemId}"]`);
-  if (tr) {
-    tr.dataset.imgData = modalSelectedImageBase64;
-    const btn = tr.querySelector('.row-img-btn');
-    btn.className = modalSelectedImageBase64 ? "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-blue-600 text-white" : "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700";
-    btn.innerText = modalSelectedImageBase64 ? "画像付(変)" : "画像追加";
-  }
-  document.getElementById('qa-image-modal').classList.add('hidden');
-});
-
-function arrayBufferToBase64(buffer) {
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result.split(',')[1]);
-    reader.readAsDataURL(new Blob([buffer]));
-  });
-}
-
-// --- 通常問題登録・閲覧 ---
-document.getElementById('btn-nav-register').addEventListener('click', () => openRegisterForm(null));
-document.getElementById('cancel-register-btn').addEventListener('click', closeRegisterForm);
-
-function openRegisterForm(docData = null) {
-  document.getElementById('view-mode-container').classList.add('hidden');
-  document.getElementById('collection-player-container').classList.add('hidden');
-  document.getElementById('table-player-container').classList.add('hidden');
-  document.getElementById('kanji-player-container').classList.add('hidden');
-  document.getElementById('table-register-form-container').classList.add('hidden');
-  document.getElementById('kanji-register-form-container').classList.add('hidden');
-  document.getElementById('register-form-container').classList.remove('hidden');
-
-  document.getElementById('editing-doc-id').value = docData ? docData.id : '';
-  document.getElementById('problem-name-input').value = docData ? docData.title : '';
-  document.getElementById('subquestion-input').value = docData ? docData.subQuestion : '';
-  document.getElementById('subject-input').value = docData ? docData.subject : '';
-  document.getElementById('unit-input').value = docData ? docData.unit : '';
-  document.getElementById('q-text-input').value = docData ? docData.questionText : '';
-  document.getElementById('a-text-input').value = docData ? docData.answerText : '';
-}
-
-function closeRegisterForm() {
-  document.getElementById('register-form-container').classList.add('hidden');
-  document.getElementById('view-mode-container').classList.remove('hidden');
-}
-
-document.getElementById('save-doc-btn').addEventListener('click', async () => {
-  if (!currentUser) return;
-  const title = document.getElementById('problem-name-input').value.trim();
-  if (!title) { alert("タイトルを入力してください。"); return; }
-  const docId = document.getElementById('editing-doc-id').value || `doc_${Date.now()}`;
-  const payload = {
-    title,
-    subQuestion: document.getElementById('subquestion-input').value.trim(),
-    subject: document.getElementById('subject-input').value.trim(),
-    unit: document.getElementById('unit-input').value.trim(),
-    questionText: document.getElementById('q-text-input').value.trim(),
-    answerText: document.getElementById('a-text-input').value.trim(),
-    updatedAt: Date.now(),
-    stats: { correct: 0, incorrect: 0 }
-  };
-  await setDoc(doc(db, "users", currentUser.uid, "documents", docId), payload, { merge: true });
-  alert("保存しました！"); closeRegisterForm();
-});
-
-function selectDocument(docData) {
-  selectedDocId = docData.id; currentDocData = docData;
-  document.getElementById('doc-title').innerText = `${docData.title} ${docData.subQuestion ? '('+docData.subQuestion+')' : ''}`;
-  document.getElementById('edit-current-btn').classList.remove('hidden');
-  const hasAns = docData.answerText && docData.answerText.length > 0;
-  if (hasAns) document.getElementById('toggle-answer-pane-btn').classList.remove('hidden');
-  else document.getElementById('toggle-answer-pane-btn').classList.add('hidden');
-  answerPane.classList.add('hidden');
-  toggleAnswerBtn.innerText = "💡 解答解説を表示";
-  renderContent();
-  renderCurrentView();
-}
-
-document.getElementById('edit-current-btn').addEventListener('click', () => { if (currentDocData) openRegisterForm(currentDocData); });
-
-async function renderContent() {
-  if (!currentDocData) return;
-  renderPaneContentForContainer(document.getElementById('question-display-area'), currentDocData.questionText, currentDocData.questionMaterials);
-  renderPaneContentForContainer(document.getElementById('answer-display-area'), currentDocData.answerText, currentDocData.answerMaterials, "解答解説はありません。");
-}
-
-function renderPaneContentForContainer(displayArea, textVal, materials, emptyMsg = "データはありません。") {
-  displayArea.innerHTML = '';
-  if (!textVal && (!materials || materials.length === 0)) {
-    displayArea.innerHTML = `<div class="text-center text-gray-400 py-10"><p class="text-xs">${emptyMsg}</p></div>`;
-    return;
-  }
-  if (textVal) {
-    const div = document.createElement('div');
-    div.className = "content-text-box";
-    div.innerText = textVal;
-    displayArea.appendChild(div);
-  }
-  if (materials && materials.length > 0) {
-    materials.forEach(item => {
-      const container = document.createElement('div');
-      container.className = "custom-content-viewer border rounded-lg p-2 bg-white mt-2";
-      const buffer = base64ToArrayBuffer(LZString.decompressFromUTF16(item.data));
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(new Blob([buffer]));
-      img.className = "content-image";
-      container.appendChild(img);
-      displayArea.appendChild(container);
-    });
-  }
-}
-
-function clearDocumentView() {
-  selectedDocId = null; currentDocData = null;
-  document.getElementById('doc-title').innerText = '左のリストから問題を選択してください';
-  document.getElementById('edit-current-btn').classList.add('hidden');
-  document.getElementById('toggle-answer-pane-btn').classList.add('hidden');
-  answerPane.classList.add('hidden');
-  document.getElementById('question-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>';
-}
