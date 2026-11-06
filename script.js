@@ -441,7 +441,9 @@ document.getElementById('save-table-doc-btn').addEventListener('click', async ()
   alert("保存しました！"); closeTableRegisterForm();
 });
 
-// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック ---
+
+
+// --- 6. 漢字問題のリスト描画・エディタ・演習ロジック (レイアウト完全修復版) ---
 function renderKanjiTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
@@ -511,10 +513,10 @@ function renderKanjiTableRows(passages) {
       tr.dataset.passageId = passage.id;
       tr.dataset.subId = sub.id;
 
-      let leftCellHtml = '';
+      // 7列の構造に完全に一致させるため、各セルを確実に順番通りに配置します
+      let leftCellsHtml = '';
       if (sIndex === 0) {
-        // 最初の行のみ rowspan を使って 1〜3列目（並び替え、#、文章）をセル結合し、HTMLの7列にピタリと合わせます
-        leftCellHtml = `
+        leftCellsHtml = `
           <td class="p-2 text-center text-gray-400 cursor-grab font-bold align-middle drag-handle" title="ドラッグして移動" draggable="true" rowspan="${subItems.length}">≡</td>
           <td class="p-2 text-center font-bold text-gray-500 row-index align-middle" rowspan="${subItems.length}">${pIndex + 1}</td>
           <td class="p-2 align-middle" rowspan="${subItems.length}">
@@ -524,7 +526,7 @@ function renderKanjiTableRows(passages) {
       }
 
       tr.innerHTML = `
-        ${leftCellHtml}
+        ${leftCellsHtml}
         <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-word-input" placeholder="傍線部(漢字)" value="${sub.targetWord || ''}"/></td>
         <td class="p-2"><input type="text" class="w-full border rounded p-1 kanji-reading-input" placeholder="読み仮名(ひらがな)" value="${sub.reading || ''}"/></td>
         <td class="p-2 text-center">
@@ -559,7 +561,7 @@ function renderKanjiTableRows(passages) {
       tbody.appendChild(tr);
     });
 
-    // 傍線追加ボタン行（colspan="7" に修正し、テーブルの7列にきれいに収まるようにしました）
+    // 傍線追加ボタン行（colspan="7" でテーブルの全7列にきれいに収めます）
     const addRowTr = document.createElement('tr');
     addRowTr.className = "bg-amber-50/50 border-b";
     addRowTr.innerHTML = `
