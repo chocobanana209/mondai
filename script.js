@@ -4,6 +4,7 @@ import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, dele
 import { renderTableList } from "./keywords.js";
 import { renderKanjiTableList } from "./kanji.js";
 import { renderTimelineList } from "./timeline.js";
+import { openRefreshModeModal } from "./refresh.js";
 
 const firebaseConfig = { apiKey: "AIzaSyAat1qoigRFAQtIwCHweMeO6P0qTmR10_8", authDomain: "mondai-choco.firebaseapp.com", projectId: "mondai-choco", appId: "1:41081435290:web:f5237845a870e11e719b23" };
 let app, auth;
@@ -63,6 +64,12 @@ document.getElementById('nav-tables').addEventListener('click', () => { currentM
 document.getElementById('nav-kanji').addEventListener('click', () => { currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); });
 document.getElementById('nav-timeline').addEventListener('click', () => { currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); });
 
+// 💡 誤答リフレッシュモード起動ボタンのイベント
+document.getElementById('nav-refresh').addEventListener('click', () => {
+  isPlayingCollection = false;
+  openRefreshModeModal(allDocuments, allTables, allKanjiTables);
+});
+
 function setActiveNavTab(tabId) {
   ['nav-docs', 'nav-collections', 'nav-tables', 'nav-kanji', 'nav-timeline'].forEach(id => {
     const btn = document.getElementById(id);
@@ -105,7 +112,7 @@ function renderDocumentList(docs) {
   docs.forEach(data => {
     const item = document.createElement('div');
     item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${data.id === selectedDocId && !isPlayingCollection ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50'}`;
-    item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div><div class="text-[10px] text-gray-500">正解: ${data.stats?.correct || 0} / 誤答: ${data.stats?.incorrect || 0}</div>`;
+    item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div><div class="text-[10px] text-gray-500">教科: ${data.subject || '未設定'} | 正解: ${data.stats?.correct || 0} / 誤答: ${data.stats?.incorrect || 0}</div>`;
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('del-btn') || e.target.classList.contains('edit-btn')) return;
       if (isPlayingCollection) {
@@ -192,6 +199,7 @@ function startCollectionPlay(collData) {
   document.getElementById('view-mode-container').classList.add('hidden');
   document.getElementById('table-player-container').classList.add('hidden');
   document.getElementById('kanji-player-container').classList.add('hidden');
+  document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.remove('hidden');
   document.getElementById('collection-player-title').innerText = collData.name;
   renderCollectionPlayerCurrent();
@@ -291,6 +299,11 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   const c = parseInt(document.getElementById('stat-correct-input').value) || 0;
   const i = parseInt(document.getElementById('stat-incorrect-input').value) || 0;
   currentDocData.stats = { correct: c, incorrect: i };
+  if (i > 0) {
+    localStorage.setItem(`doc_mistake_time_${currentDocData.id}`, Date.now());
+  } else {
+    localStorage.removeItem(`doc_mistake_time_${currentDocData.id}`);
+  }
   await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: currentDocData.stats }, { merge: true });
   alert("正誤記録を保存しました！");
   document.getElementById('stats-modal').classList.add('hidden');
