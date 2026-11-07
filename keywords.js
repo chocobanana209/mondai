@@ -8,20 +8,21 @@ let activeModalRowId = null, activeModalType = 'question';
 const DEFAULT_COL_WIDTHS = {
   drag: "36px",
   index: "36px",
-  question: "35%",
+  unit: "16%",
+  question: "30%",
   qimg: "42px",
-  answer: "18%",
+  answer: "16%",
   choice: "52px",
-  wrong: "14%",
+  wrong: "12%",
   cimg: "42px",
   imp: "70px",
-  exp: "18%",
+  exp: "16%",
   action: "42px"
 };
 
 export function renderTableList(tables, hiddenUnits) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
-  const activeTables = tables.filter(t => !t.isDeleted && !(t.unit && hiddenUnits.has(t.unit)));
+  const activeTables = tables.filter(t => !t.isDeleted);
   container.innerHTML = activeTables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
   
   activeTables.forEach(t => {
@@ -36,7 +37,7 @@ export function renderTableList(tables, hiddenUnits) {
         </div>
       </div>
       <div class="text-[10px] text-emerald-700">
-        教科: ${t.subject || '未設定'} ${t.unit ? `| 単元: ${t.unit}` : ''} | 問題数: ${t.items ? t.items.length : 0}問
+        教科: ${t.subject || '未設定'} | 問題数: ${t.items ? t.items.length : 0}問 ${t.description ? `| ${t.description}` : ''}
       </div>
       <button class="start-exercise-btn w-full bg-emerald-600 text-white py-1.5 rounded font-bold">演習を始める 🎯</button>
     `;
@@ -67,6 +68,9 @@ document.getElementById('start-table-exercise-btn').addEventListener('click', ()
   const limit = parseInt(document.getElementById('config-limit-input').value) || 10;
 
   let items = [...activeTableData.items];
+  // 非表示単元に該当する問題は除外
+  items = items.filter(item => !item.unit || !hiddenUnits.has(item.unit));
+
   if (scope === 'mistaken') {
     items = items.filter(item => localStorage.getItem(`qa_hist_${activeTableData.id}_${item.id}`) === 'incorrect');
     if (items.length === 0) { alert("間違えた問題がありません。"); return; }
@@ -113,6 +117,7 @@ function renderTableExerciseCurrentItem() {
 
   const item = exerciseQueue[currentExerciseIndex];
   document.getElementById('table-progress-count').innerText = `問題 ${currentExerciseIndex + 1} / ${exerciseQueue.length}`;
+  document.getElementById('table-item-unit-badge').innerText = item.unit ? `単元: ${item.unit}` : '単元なし';
   document.getElementById('table-loop-badge').innerText = isRetryLoop ? "🔥 リトライ周回" : "通常周回";
   document.getElementById('t-ex-question').innerText = item.question || "";
   
@@ -167,7 +172,7 @@ function renderTableExerciseCurrentItem() {
   document.getElementById('t-ex-answer-area').classList.add('hidden');
   document.getElementById('t-ex-show-ans-btn').classList.remove('hidden');
   document.getElementById('t-ex-grade-buttons').classList.add('hidden');
-}
+});
 
 document.getElementById('t-ex-show-ans-btn').addEventListener('click', () => {
   document.getElementById('t-ex-answer-area').classList.remove('hidden');
@@ -177,7 +182,6 @@ document.getElementById('t-ex-show-ans-btn').addEventListener('click', () => {
 
 document.getElementById('t-ex-correct-btn').addEventListener('click', () => {
   const item = exerciseQueue[currentExerciseIndex];
-  // 履歴と連続正解数の更新（間隔反復用）
   updateSpacedRepetitionRecord(activeTableData.id, item.id, true);
   currentExerciseIndex++;
   renderTableExerciseCurrentItem();
@@ -191,7 +195,6 @@ document.getElementById('t-ex-incorrect-btn').addEventListener('click', () => {
   renderTableExerciseCurrentItem();
 });
 
-// 間隔反復・連続正解数の記録ヘルパー
 function updateSpacedRepetitionRecord(tableId, itemId, isCorrect) {
   const key = `sr_${tableId}_${itemId}`;
   let data = JSON.parse(localStorage.getItem(key)) || { streak: 0, lastTime: 0 };
@@ -235,8 +238,8 @@ function openTableRegisterForm(tableData = null) {
   document.getElementById('editing-table-id').value = tableData ? tableData.id : '';
   document.getElementById('table-name-input').value = tableData ? tableData.title : '';
   document.getElementById('table-subject-input').value = tableData ? (tableData.subject || "") : "";
-  const unitInput = document.getElementById('table-unit-input');
-  if (unitInput) unitInput.value = tableData ? (tableData.unit || "") : "";
+  const descInput = document.getElementById('table-desc-input');
+  if (descInput) descInput.value = tableData ? (tableData.description || "") : "";
   document.getElementById('table-importances-input').value = tableData && tableData.importances ? tableData.importances.join(', ') : "高, 中, 低";
   
   applyColumnWidths();
@@ -251,7 +254,7 @@ function closeTableRegisterForm() {
 }
 
 function createEmptyRowItem() {
-  return { id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, question: "", questionImage: "", answer: "", isChoiceMode: false, wrongChoices: "", choiceImage: "", importance: "中", explanation: "" };
+  return { id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, unit: "", question: "", questionImage: "", answer: "", isChoiceMode: false, wrongChoices: "", choiceImage: "", importance: "中", explanation: "" };
 }
 
 function renderTableRows(items) {
@@ -284,6 +287,7 @@ function appendRowToTable(item, index, importances) {
   wrapper.innerHTML = `
     <td class="p-1 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
     <td class="p-1 text-center font-bold text-gray-500 row-index">${index + 1}</td>
+    <td class="p-1"><input type="text" class="w-full border rounded p-1 row-unit text-xs" placeholder="単元名..." value="${item.unit || ''}"/></td>
     <td class="p-1"><textarea rows="1" class="w-full border rounded p-1 row-q text-xs auto-expand" placeholder="問題...">${item.question || ''}</textarea></td>
     <td class="p-1 text-center"><button type="button" class="row-img-btn w-7 h-7 rounded text-xs font-bold transition flex items-center justify-center mx-auto ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}" title="問題画像添付">${hasImg ? '🖼️' : '+'}</button></td>
     <td class="p-1"><textarea rows="1" class="w-full border rounded p-1 row-a text-xs auto-expand" placeholder="解答(カンマ区切り)">${item.answer || ''}</textarea></td>
@@ -295,7 +299,6 @@ function appendRowToTable(item, index, importances) {
     <td class="p-1 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold p-1 rounded hover:bg-red-50 text-sm" title="削除">🗑️</button></td>
   `;
 
-  // 自動伸縮の適用
   wrapper.querySelectorAll('textarea.auto-expand').forEach(ta => {
     setTimeout(() => autoResizeTextarea(ta), 0);
     ta.addEventListener('input', () => autoResizeTextarea(ta));
@@ -343,44 +346,31 @@ function reindexTableRows() {
   });
 }
 
-const addQaQuickRowBtn = document.getElementById('add-qa-quick-row-btn');
-if (addQaQuickRowBtn) {
-  addQaQuickRowBtn.addEventListener('click', () => {
-    const q = prompt("【短問追加】問題文を入力してください:");
-    if (!q || !q.trim()) return;
-    const a = prompt("【短問追加】解答を入力してください:");
-    if (!a || !a.trim()) return;
-
-    const tbody = document.getElementById('qa-table-tbody');
-    const importancesInput = document.getElementById('table-importances-input');
-    const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
-    
-    const newItem = {
-      id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      question: q.trim(),
-      questionImage: "",
-      answer: a.trim(),
-      isChoiceMode: false,
-      wrongChoices: "",
-      choiceImage: "",
-      importance: "中",
-      explanation: ""
-    };
-    
-    appendRowToTable(newItem, tbody ? tbody.children.length : 0, importances);
-  });
-}
-
+// 💡 「空行を追加」：直上の行から単元名・重要度を引き継ぐ仕様
 const addQaRowBtn = document.getElementById('add-qa-row-btn');
 if (addQaRowBtn) {
   addQaRowBtn.addEventListener('click', () => {
     const tbody = document.getElementById('qa-table-tbody'); if (!tbody) return;
     const importancesInput = document.getElementById('table-importances-input');
     const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
+    
+    let defaultUnit = "";
+    let defaultImp = "中";
     let defaultExp = "";
-    if (tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
+
+    if (tbody.children.length > 0) {
+      const lastRow = tbody.lastElementChild;
+      const uInput = lastRow.querySelector('.row-unit');
+      const impSelect = lastRow.querySelector('.row-imp');
+      const expArea = lastRow.querySelector('.row-exp');
+      if (uInput) defaultUnit = uInput.value;
+      if (impSelect) defaultImp = impSelect.value;
+      if (expArea) defaultExp = expArea.value;
+    }
 
     const newItem = createEmptyRowItem();
+    newItem.unit = defaultUnit;
+    newItem.importance = defaultImp;
     newItem.explanation = defaultExp;
     appendRowToTable(newItem, tbody.children.length, importances);
   });
@@ -393,12 +383,12 @@ if (saveTableDocBtn) {
     const title = document.getElementById('table-name-input').value.trim();
     if (!title) { alert("タイトルを入力してください。"); return; }
     const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
-    const unitInput = document.getElementById('table-unit-input');
-    const unit = unitInput ? unitInput.value.trim() : "";
+    const description = document.getElementById('table-desc-input').value.trim() || "";
 
     const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
     const items = [];
     document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
+      const uInput = tr.querySelector('.row-unit');
       const qArea = tr.querySelector('.row-q');
       const aArea = tr.querySelector('.row-a');
       const chkBox = tr.querySelector('.row-choice-chk');
@@ -408,6 +398,7 @@ if (saveTableDocBtn) {
       if (qArea) {
         items.push({
           id: tr.dataset.itemId,
+          unit: uInput ? uInput.value.trim() : "",
           question: qArea.value.trim(),
           questionImage: tr.dataset.imgData || "",
           answer: aArea ? aArea.value.trim() : "",
@@ -421,7 +412,7 @@ if (saveTableDocBtn) {
     });
 
     const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
-    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, unit, importances, items, updatedAt: Date.now(), isDeleted: false }, { merge: true });
+    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, description, importances, items, updatedAt: Date.now(), isDeleted: false }, { merge: true });
     alert("一問一答表を保存しました！"); closeTableRegisterForm();
   });
 }
