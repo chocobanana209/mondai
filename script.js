@@ -13,7 +13,7 @@ export let currentUser = null;
 
 let selectedDocId = null, currentDocData = null, allDocuments = [], allCollections = [], allTables = [], allKanjiTables = [], allTimelines = [], currentMainView = 'documents';
 let collectionPlayList = [], collectionPlayIndex = 0, isPlayingCollection = false, isContinuousAnswerOn = false;
-let hiddenUnits = new Set(); // 非表示単元セット
+let hiddenUnits = new Set();
 
 try {
   app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app);
@@ -70,7 +70,6 @@ document.getElementById('nav-tables').addEventListener('click', () => { currentM
 document.getElementById('nav-kanji').addEventListener('click', () => { currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); });
 document.getElementById('nav-timeline').addEventListener('click', () => { currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); });
 
-// 💡 「解きなおし」モード起動
 document.getElementById('nav-refresh').addEventListener('click', () => {
   isPlayingCollection = false;
   openRefreshModeModal({
@@ -82,10 +81,11 @@ document.getElementById('nav-refresh').addEventListener('click', () => {
   });
 });
 
-// 💡 問題の短問追加モーダル（問題モード用）
 document.getElementById('nav-quick-doc-add').addEventListener('click', () => {
   document.getElementById('qd-title').value = "";
   document.getElementById('qd-subject').value = "";
+  document.getElementById('qd-unit').value = "";
+  document.getElementById('qd-desc').value = "";
   document.getElementById('qd-question').value = "";
   document.getElementById('qd-answer').value = "";
   document.getElementById('quick-doc-modal').classList.remove('hidden');
@@ -96,6 +96,8 @@ document.getElementById('save-quick-doc-btn').addEventListener('click', async ()
   if (!currentUser) return;
   const title = document.getElementById('qd-title').value.trim();
   const subject = document.getElementById('qd-subject').value.trim() || "未設定";
+  const unit = document.getElementById('qd-unit').value.trim() || "";
+  const description = document.getElementById('qd-desc').value.trim() || "";
   const questionText = document.getElementById('qd-question').value.trim();
   const answerText = document.getElementById('qd-answer').value.trim();
 
@@ -105,6 +107,8 @@ document.getElementById('save-quick-doc-btn').addEventListener('click', async ()
   await setDoc(doc(db, "users", currentUser.uid, "documents", docId), {
     title,
     subject,
+    unit,
+    description,
     questionText,
     answerText,
     questionMaterials: [],
@@ -118,7 +122,6 @@ document.getElementById('save-quick-doc-btn').addEventListener('click', async ()
   document.getElementById('quick-doc-modal').classList.add('hidden');
 });
 
-// 💡 ゴミ箱機能モーダル
 document.getElementById('open-trash-modal-btn').addEventListener('click', () => {
   renderTrashModalItems();
   document.getElementById('trash-modal').classList.remove('hidden');
@@ -218,11 +221,10 @@ function renderDocumentList(docs) {
   const activeDocs = docs.filter(d => !d.isDeleted);
   container.innerHTML = activeDocs.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題がありません。</p>' : '';
   
-  // 単元フィルターの更新
   updateUnitFilterUI(activeDocs);
 
   activeDocs.forEach(data => {
-    if (data.unit && hiddenUnits.has(data.unit)) return; // 非表示単元はスキップ
+    if (data.unit && hiddenUnits.has(data.unit)) return;
 
     const item = document.createElement('div');
     item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${data.id === selectedDocId && !isPlayingCollection ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50'}`;
@@ -296,7 +298,7 @@ function renderCollectionList(collections) {
           <button class="del-coll text-red-500 font-bold">削除</button>
         </div>
       </div>
-      <div class="text-[10px] text-gray-500">登録問題数: ${count}問</div>
+      <div class="text-[10px] text-gray-500">登録問題数: ${count}問 ${c.description ? `| ${c.description}` : ''}</div>
       <button class="play-coll-btn w-full bg-blue-600 text-white py-1.5 rounded font-bold">問題集をプレイ 🚀</button>
     `;
     item.querySelector('.play-coll-btn').addEventListener('click', (e) => { e.stopPropagation(); startCollectionPlay(c); });
@@ -315,6 +317,7 @@ function renderCollectionList(collections) {
 function openCollectionEditModal(collData) {
   document.getElementById('editing-coll-id').value = collData ? collData.id : '';
   document.getElementById('coll-name-input').value = collData ? collData.name : '';
+  document.getElementById('coll-desc-input').value = collData ? (collData.description || '') : '';
   document.getElementById('coll-modal-title').innerText = collData ? "問題集の編集" : "新しい問題集の作成";
   
   const listEl = document.getElementById('coll-problems-checkbox-list');
@@ -336,13 +339,14 @@ document.getElementById('close-coll-modal').addEventListener('click', () => docu
 document.getElementById('save-coll-modal-btn').addEventListener('click', async () => {
   if (!currentUser) return;
   const name = document.getElementById('coll-name-input').value.trim();
+  const description = document.getElementById('coll-desc-input').value.trim();
   if (!name) { alert("問題集名を入力してください。"); return; }
   const checkedBoxes = document.querySelectorAll('#coll-problems-checkbox-list input[type="checkbox"]:checked');
   const documentIds = Array.from(checkedBoxes).map(b => b.value);
   const editingId = document.getElementById('editing-coll-id').value;
   const collId = editingId ? editingId : `coll_${Date.now()}`;
 
-  await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, documentIds, updatedAt: Date.now(), isDeleted: false }, { merge: true });
+  await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, description, documentIds, updatedAt: Date.now(), isDeleted: false }, { merge: true });
   alert("問題集を保存しました！");
   document.getElementById('collection-edit-modal').classList.add('hidden');
 });
@@ -360,6 +364,7 @@ function startCollectionPlay(collData) {
   document.getElementById('refresh-mode-container').classList.add('hidden');
   document.getElementById('collection-player-container').classList.remove('hidden');
   document.getElementById('collection-player-title').innerText = collData.name;
+  document.getElementById('collection-player-desc').innerText = collData.description || '';
   renderCollectionPlayerCurrent();
 }
 
