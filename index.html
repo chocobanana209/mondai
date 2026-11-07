@@ -17,6 +17,29 @@
       border-right: none !important;
       overflow: hidden;
     }
+
+    /* スプレッドシート風のリサイズテーブル設定 */
+    .resizable-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .resizable-th {
+      position: relative;
+      user-select: none;
+    }
+    .resizer {
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 100%;
+      width: 5px;
+      background: rgba(0, 0, 0, 0.1);
+      cursor: col-resize;
+      user-select: none;
+    }
+    .resizer:hover, .resizer.resizing {
+      background: #059669;
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
@@ -198,42 +221,53 @@
         </div>
       </div>
 
-      <!-- 5. 一問一答 登録・編集エディタ画面 -->
-      <div id="table-register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 max-w-5xl mx-auto w-full">
+      <!-- 5. 一問一答 登録・編集エディタ画面（横いっぱいに拡張） -->
+      <div id="table-register-form-container" class="hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 w-full">
         <div class="flex justify-between items-center border-b pb-3">
           <h2 class="text-base font-bold text-slate-800">一問一答表の作成・編集</h2>
-          <button id="cancel-table-register-btn" class="text-xs text-slate-500">キャンセル</button>
+          <div class="flex items-center gap-2">
+            <button type="button" id="reset-col-width-btn" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-1 rounded border transition font-medium">列幅を初期に戻す 🔄</button>
+            <button id="cancel-table-register-btn" class="text-xs text-slate-500 hover:text-slate-800">キャンセル</button>
+          </div>
         </div>
         <input type="hidden" id="editing-table-id" value="">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div><label class="block text-xs font-semibold text-gray-700 mb-1">タイトル</label><input type="text" id="table-name-input" class="w-full text-xs border rounded p-2" placeholder="例: 世界史用語マスター"/></div>
           <div><label class="block text-xs font-semibold text-gray-700 mb-1">教科名</label><input type="text" id="table-subject-input" class="w-full text-xs border rounded p-2" placeholder="例: 歴史、英語"/></div>
+          <div><label class="block text-xs font-semibold text-gray-700 mb-1">単元名</label><input type="text" id="table-unit-input" class="w-full text-xs border rounded p-2" placeholder="例: 江戸時代、三角関数"/></div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-700 mb-1">重要度選択肢 (カンマ区切り)</label>
           <input type="text" id="table-importances-input" class="w-full text-xs border rounded p-2" value="高, 中, 低"/>
         </div>
+
+        <!-- スプレッドシート型リサイズ可能テーブル -->
         <div class="border rounded-lg overflow-x-auto bg-slate-50 p-2">
-          <table class="w-full text-xs text-left border-collapse" id="qa-spread-table">
+          <table class="w-full text-xs text-left border-collapse resizable-table" id="qa-spread-table">
             <thead>
               <tr class="bg-emerald-100 text-emerald-900 border-b">
-                <th class="p-2 w-10 text-center">並替</th>
-                <th class="p-2 w-8 text-center">#</th>
-                <th class="p-2 w-1/4">問題</th>
-                <th class="p-2 w-16 text-center">画像</th>
-                <th class="p-2 w-1/5">解答(複数可)</th>
-                <th class="p-2 w-10 text-center">選択肢</th>
-                <th class="p-2 w-1/5">誤答(カンマ区切り)</th>
-                <th class="p-2 w-16 text-center">選択肢画像</th>
-                <th class="p-2 w-20">重要度</th>
-                <th class="p-2 w-1/5">解説</th>
-                <th class="p-2 w-12 text-center">操作</th>
+                <th class="p-2 text-center resizable-th" data-col="drag"><span class="truncate">並替</span><div class="resizer"></div></th>
+                <th class="p-2 text-center resizable-th" data-col="index"><span class="truncate">#</span><div class="resizer"></div></th>
+                <th class="p-2 resizable-th" data-col="question"><span class="truncate">問題</span><div class="resizer"></div></th>
+                <th class="p-2 text-center resizable-th" data-col="qimg" title="問題画像"><span class="truncate">画像</span><div class="resizer"></div></th>
+                <th class="p-2 resizable-th" data-col="answer"><span class="truncate">解答(複数可)</span><div class="resizer"></div></th>
+                <th class="p-2 text-center resizable-th" data-col="choice"><span class="truncate">選択肢</span><div class="resizer"></div></th>
+                <th class="p-2 resizable-th" data-col="wrong"><span class="truncate">誤答(カンマ区切り)</span><div class="resizer"></div></th>
+                <th class="p-2 text-center resizable-th" data-col="cimg" title="選択肢画像"><span class="truncate">選択肢画像</span><div class="resizer"></div></th>
+                <th class="p-2 text-center resizable-th" data-col="imp"><span class="truncate">重要度</span><div class="resizer"></div></th>
+                <th class="p-2 resizable-th" data-col="exp"><span class="truncate">解説</span><div class="resizer"></div></th>
+                <th class="p-2 text-center resizable-th" data-col="action"><span class="truncate">🗑️</span></th>
               </tr>
             </thead>
             <tbody id="qa-table-tbody" class="space-y-1"></tbody>
           </table>
         </div>
-        <button type="button" id="add-qa-row-btn" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 rounded text-xs">+ 問題行を追加する</button>
+
+        <!-- 短問追加 ＆ 行追加ボタン -->
+        <div class="flex gap-2">
+          <button type="button" id="add-qa-quick-row-btn" class="flex-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold py-2 rounded text-xs transition shadow-2xs">+ 短問追加（1問追加）</button>
+          <button type="button" id="add-qa-row-btn" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 rounded text-xs transition shadow-2xs">+ 空行を追加</button>
+        </div>
         <button id="save-table-doc-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded text-xs shadow-sm">一問一答表を保存する</button>
       </div>
 
