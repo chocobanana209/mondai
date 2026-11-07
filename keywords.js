@@ -68,7 +68,6 @@ document.getElementById('start-table-exercise-btn').addEventListener('click', ()
   const limit = parseInt(document.getElementById('config-limit-input').value) || 10;
 
   let items = [...activeTableData.items];
-  // 非表示単元に該当する問題は除外
   items = items.filter(item => !item.unit || !hiddenUnits.has(item.unit));
 
   if (scope === 'mistaken') {
@@ -172,7 +171,7 @@ function renderTableExerciseCurrentItem() {
   document.getElementById('t-ex-answer-area').classList.add('hidden');
   document.getElementById('t-ex-show-ans-btn').classList.remove('hidden');
   document.getElementById('t-ex-grade-buttons').classList.add('hidden');
-});
+}
 
 document.getElementById('t-ex-show-ans-btn').addEventListener('click', () => {
   document.getElementById('t-ex-answer-area').classList.remove('hidden');
@@ -346,7 +345,6 @@ function reindexTableRows() {
   });
 }
 
-// 💡 「空行を追加」：直上の行から単元名・重要度を引き継ぐ仕様
 const addQaRowBtn = document.getElementById('add-qa-row-btn');
 if (addQaRowBtn) {
   addQaRowBtn.addEventListener('click', () => {
