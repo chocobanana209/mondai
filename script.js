@@ -88,7 +88,6 @@ function setupRealtimeListeners() {
   detachRealtimeListeners();
   if (!currentUser) return;
   
-  // ゴミ箱（isDeleted）に入っていないデータだけをリアルタイム取得
   onSnapshot(query(collection(db, "users", currentUser.uid, "documents"), orderBy("updatedAt", "desc")), snap => {
     allDocuments = []; 
     snap.forEach(d => {
@@ -162,7 +161,6 @@ function renderDocumentList(docs) {
       selectDocument(data);
     });
 
-    // 💡 削除ボタン（ゴミ箱へ移動の確認 ＋ ソフトデリート処理）
     item.querySelector('.del-btn').addEventListener('click', async (e) => { 
       e.stopPropagation(); 
       if (confirm(`「${data.title}」をゴミ箱に移動しますか？`)) {
