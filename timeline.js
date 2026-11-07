@@ -1,5 +1,5 @@
 import { db, currentUser } from "./script.js";
-import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 let activeTimelineData = null;
 
@@ -23,7 +23,14 @@ export function renderTimelineList(tables) {
     `;
     item.querySelector('.view-timeline-btn').addEventListener('click', (e) => { e.stopPropagation(); openTimelineView(t); });
     item.querySelector('.edit-timeline').addEventListener('click', (e) => { e.stopPropagation(); openTimelineRegisterForm(t); });
-    item.querySelector('.del-timeline').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "timelineTables", t.id)); });
+    
+    // 💡 削除ボタン（ゴミ箱移動）
+    item.querySelector('.del-timeline').addEventListener('click', async (e) => { 
+      e.stopPropagation(); 
+      if (confirm(`年表「${t.title}」をゴミ箱に移動しますか？`)) {
+        await setDoc(doc(db, "users", currentUser.uid, "timelineTables", t.id), { isDeleted: true }, { merge: true });
+      }
+    });
     container.appendChild(item);
   });
 }
@@ -33,8 +40,15 @@ function openTimelineView(tableData) {
   openTimelineRegisterForm(tableData);
 }
 
-document.getElementById('btn-nav-timeline-register').addEventListener('click', () => openTimelineRegisterForm(null));
-document.getElementById('cancel-timeline-register-btn').addEventListener('click', closeTimelineRegisterForm);
+const btnNavTimelineReg = document.getElementById('btn-nav-timeline-register');
+if (btnNavTimelineReg) {
+  btnNavTimelineReg.addEventListener('click', () => openTimelineRegisterForm(null));
+}
+
+const cancelTimelineRegBtn = document.getElementById('cancel-timeline-register-btn');
+if (cancelTimelineRegBtn) {
+  cancelTimelineRegBtn.addEventListener('click', closeTimelineRegisterForm);
+}
 
 function openTimelineRegisterForm(timelineData = null) {
   document.getElementById('view-mode-container').classList.add('hidden');
@@ -71,7 +85,6 @@ function createEmptyTimelineItem() {
   };
 }
 
-// 年・月・日を数値化して古い順に並び替える関数（紀元前のマイナス年数に対応）
 function sortTimelineItems(items) {
   items.sort((a, b) => {
     const yA = parseInt(a.year) || 0;
@@ -109,7 +122,6 @@ function renderTimelineRows(items) {
       </td>
     `;
 
-    // スムーズなドラッグ＆ドロップ処理
     const handle = tr.querySelector('.drag-handle');
     handle.addEventListener('mousedown', () => tr.setAttribute('draggable', 'true'));
     handle.addEventListener('mouseup', () => tr.removeAttribute('draggable'));
@@ -180,23 +192,29 @@ function collectCurrentTimelineItems() {
   return items;
 }
 
-document.getElementById('add-timeline-row-btn').addEventListener('click', () => {
-  const currentItems = collectCurrentTimelineItems();
-  currentItems.push(createEmptyTimelineItem());
-  renderTimelineRows(currentItems);
-});
+const addTimelineRowBtn = document.getElementById('add-timeline-row-btn');
+if (addTimelineRowBtn) {
+  addTimelineRowBtn.addEventListener('click', () => {
+    const currentItems = collectCurrentTimelineItems();
+    currentItems.push(createEmptyTimelineItem());
+    renderTimelineRows(currentItems);
+  });
+}
 
-document.getElementById('save-timeline-doc-btn').addEventListener('click', async () => {
-  if (!currentUser) return;
-  const title = document.getElementById('timeline-name-input').value.trim();
-  if (!title) { alert("年表のタイトルを入力してください。"); return; }
-  const subject = document.getElementById('timeline-subject-input').value.trim() || "未設定";
+const saveTimelineDocBtn = document.getElementById('save-timeline-doc-btn');
+if (saveTimelineDocBtn) {
+  saveTimelineDocBtn.addEventListener('click', async () => {
+    if (!currentUser) return;
+    const title = document.getElementById('timeline-name-input').value.trim();
+    if (!title) { alert("年表のタイトルを入力してください。"); return; }
+    const subject = document.getElementById('timeline-subject-input').value.trim() || "未設定";
 
-  const items = collectCurrentTimelineItems();
-  if (items.length === 0) { alert("少なくとも1つ以上の年表項目を入力してください。"); return; }
+    const items = collectCurrentTimelineItems();
+    if (items.length === 0) { alert("少なくとも1つ以上の年表項目を入力してください。"); return; }
 
-  const timelineId = document.getElementById('editing-timeline-id').value || `timeline_${Date.now()}`;
-  await setDoc(doc(db, "users", currentUser.uid, "timelineTables", timelineId), { title, subject, items, updatedAt: Date.now() }, { merge: true });
-  alert("年表を保存しました！"); 
-  closeTimelineRegisterForm();
-});
+    const timelineId = document.getElementById('editing-timeline-id').value || `timeline_${Date.now()}`;
+    await setDoc(doc(db, "users", currentUser.uid, "timelineTables", timelineId), { title, subject, items, updatedAt: Date.now() }, { merge: true });
+    alert("年表を保存しました！"); 
+    closeTimelineRegisterForm();
+  });
+}
