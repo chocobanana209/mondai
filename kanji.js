@@ -1,5 +1,5 @@
 import { db, currentUser } from "./script.js";
-import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 let activeKanjiData = null;
 let kanjiExerciseQueue = [], kanjiRetryQueue = [], currentKanjiIndex = 0, kanjiTotalCount = 0, isKanjiRetryLoop = false;
@@ -23,7 +23,14 @@ export function renderKanjiTableList(tables) {
     `;
     item.querySelector('.start-kanji-exercise-btn').addEventListener('click', (e) => { e.stopPropagation(); openKanjiConfigModal(t); });
     item.querySelector('.edit-kanji').addEventListener('click', (e) => { e.stopPropagation(); openKanjiRegisterForm(t); });
-    item.querySelector('.del-kanji').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "kanjiTables", t.id)); });
+    
+    // 💡 削除ボタン（ゴミ箱移動）
+    item.querySelector('.del-kanji').addEventListener('click', async (e) => { 
+      e.stopPropagation(); 
+      if (confirm(`漢字問題「${t.title}」をゴミ箱に移動しますか？`)) {
+        await setDoc(doc(db, "users", currentUser.uid, "kanjiTables", t.id), { isDeleted: true }, { merge: true });
+      }
+    });
     container.appendChild(item);
   });
 }
