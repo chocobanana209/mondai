@@ -17,7 +17,6 @@ export function openRefreshModeModal(dataAll) {
   document.getElementById('refresh-config-pane').classList.remove('hidden');
   document.getElementById('refresh-player-pane').classList.add('hidden');
 
-  // 教科・教材のチェックボックス構築
   const subjects = new Set();
   const materials = [
     { key: 'questionTables', name: '一問一答' },
@@ -69,7 +68,6 @@ document.getElementById('start-refresh-session-btn').addEventListener('click', (
   const now = Date.now();
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-  // 各教材を走査して間隔反復ティア判定を行う
   if (selectedMaterials.includes('questionTables') && dataAll.questionTables) {
     dataAll.questionTables.filter(t => !t.isDeleted && selectedSubjects.includes(t.subject)).forEach((table, tIdx) => {
       if (table.items) {
@@ -116,7 +114,12 @@ document.getElementById('start-refresh-session-btn').addEventListener('click', (
     });
   }
 
-  // 重要度順（ティア昇順: 1が最重要） -> 教材順 -> 登録順
+  // 1: 前回間違えた問題（直近即時以外）
+  // 2: 連続正解1回、前回から1日以上
+  // 3: 連続正解2回、前回から3日以上
+  // 4: 連続正解3回、前回から7日以上
+  // 5: 連続正解4回以上、前回から20日以上
+  // 同じ重要度では教材順 -> 問題登録順
   candidates.sort((a, b) => {
     if (a.tier !== b.tier) return a.tier - b.tier;
     if (a.materialOrder !== b.materialOrder) return a.materialOrder - b.materialOrder;
@@ -137,22 +140,15 @@ document.getElementById('start-refresh-session-btn').addEventListener('click', (
   renderRefreshCurrentItem();
 });
 
-// 間隔反復ティア判定ロジック
-// 1: 前回間違えた問題（即時解き直し以外）
-// 2: 連続正解1回、かつ前回から1日経過
-// 3: 連続正解2回、かつ前回から3日経過
-// 4: 連続正解3回、かつ前回から7日経過
-// 5: 連続正解4回、かつ前回から20日経過
 function getSpacedRepetitionTier(tableId, itemId, now, ONE_DAY_MS) {
   const key = `sr_${tableId}_${itemId}`;
   const data = JSON.parse(localStorage.getItem(key));
-  if (!data) return 0; // 未解答・正解のみなら対象外
+  if (!data) return 0;
 
   const elapsedDays = (now - data.lastTime) / ONE_DAY_MS;
 
   if (data.streak === 0) {
-    // 即時解き直し（直近5分以内など）はノーカンとする場合
-    if (now - data.lastTime < 5 * 60 * 1000) return 0;
+    if (now - data.lastTime < 5 * 60 * 1000) return 0; // 5分以内の直近即時解き直しはノーカン
     return 1;
   } else if (data.streak === 1 && elapsedDays >= 1) {
     return 2;
@@ -176,7 +172,7 @@ function renderRefreshCurrentItem() {
 
   activeRefreshData = refreshQueue[currentRefreshIndex];
   document.getElementById('refresh-progress-badge').innerText = `問題 ${currentRefreshIndex + 1} / ${refreshQueue.length}`;
-  document.getElementById('refresh-tier-badge').innerText = `優先度ティア: ${activeRefreshData.tier}`;
+  document.getElementById('refresh-tier-badge').innerText = `重要度ティア: ${activeRefreshData.tier}`;
   document.getElementById('refresh-question-box').innerText = activeRefreshData.question;
   document.getElementById('refresh-answer-text').innerText = activeRefreshData.answer;
 
