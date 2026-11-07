@@ -13,6 +13,7 @@ export let currentUser = null;
 
 let selectedDocId = null, currentDocData = null, allDocuments = [], allCollections = [], allTables = [], allKanjiTables = [], allTimelines = [], currentMainView = 'documents';
 let collectionPlayList = [], collectionPlayIndex = 0, isPlayingCollection = false, isContinuousAnswerOn = false;
+let hiddenUnits = new Set(); // 非表示単元セット
 
 try {
   app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app);
@@ -57,13 +58,10 @@ function updateAuthUI(user) {
 document.getElementById('login-btn').addEventListener('click', () => signInWithPopup(auth, new GoogleAuthProvider()));
 document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
 
-// サイドバー（メニューバー）の開閉トグル
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const sidebar = document.getElementById('sidebar');
 if (toggleSidebarBtn && sidebar) {
-  toggleSidebarBtn.addEventListener('click', () => {
-    sidebar.classList.toggle('collapsed');
-  });
+  toggleSidebarBtn.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
 }
 
 document.getElementById('nav-docs').addEventListener('click', () => { currentMainView = 'documents'; isPlayingCollection = false; setActiveNavTab('nav-docs'); renderCurrentView(); clearDocumentView(); });
@@ -72,10 +70,97 @@ document.getElementById('nav-tables').addEventListener('click', () => { currentM
 document.getElementById('nav-kanji').addEventListener('click', () => { currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); });
 document.getElementById('nav-timeline').addEventListener('click', () => { currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); });
 
+// 💡 「解きなおし」モード起動
 document.getElementById('nav-refresh').addEventListener('click', () => {
   isPlayingCollection = false;
-  openRefreshModeModal(allDocuments, allTables, allKanjiTables);
+  openRefreshModeModal({
+    documents: allDocuments,
+    collections: allCollections,
+    questionTables: allTables,
+    kanjiTables: allKanjiTables,
+    timelineTables: allTimelines
+  });
 });
+
+// 💡 問題の短問追加モーダル（問題モード用）
+document.getElementById('nav-quick-doc-add').addEventListener('click', () => {
+  document.getElementById('qd-title').value = "";
+  document.getElementById('qd-subject').value = "";
+  document.getElementById('qd-question').value = "";
+  document.getElementById('qd-answer').value = "";
+  document.getElementById('quick-doc-modal').classList.remove('hidden');
+});
+document.getElementById('close-quick-doc-modal').addEventListener('click', () => document.getElementById('quick-doc-modal').classList.add('hidden'));
+
+document.getElementById('save-quick-doc-btn').addEventListener('click', async () => {
+  if (!currentUser) return;
+  const title = document.getElementById('qd-title').value.trim();
+  const subject = document.getElementById('qd-subject').value.trim() || "未設定";
+  const questionText = document.getElementById('qd-question').value.trim();
+  const answerText = document.getElementById('qd-answer').value.trim();
+
+  if (!title || !questionText) { alert("タイトルと問題文を入力してください。"); return; }
+
+  const docId = `doc_${Date.now()}`;
+  await setDoc(doc(db, "users", currentUser.uid, "documents", docId), {
+    title,
+    subject,
+    questionText,
+    answerText,
+    questionMaterials: [],
+    answerMaterials: [],
+    stats: { correct: 0, incorrect: 0 },
+    updatedAt: Date.now(),
+    isDeleted: false
+  });
+
+  alert("短問を追加しました！");
+  document.getElementById('quick-doc-modal').classList.add('hidden');
+});
+
+// 💡 ゴミ箱機能モーダル
+document.getElementById('open-trash-modal-btn').addEventListener('click', () => {
+  renderTrashModalItems();
+  document.getElementById('trash-modal').classList.remove('hidden');
+});
+document.getElementById('close-trash-modal').addEventListener('click', () => document.getElementById('trash-modal').classList.add('hidden'));
+
+function renderTrashModalItems() {
+  const container = document.getElementById('trash-items-list');
+  container.innerHTML = '';
+  
+  const allTrashed = [];
+  allDocuments.forEach(d => { if (d.isDeleted) allTrashed.push({ ...d, typeName: '問題', col: 'documents' }); });
+  allCollections.forEach(c => { if (c.isDeleted) allTrashed.push({ ...c, title: c.name, typeName: '問題集', col: 'collections' }); });
+  allTables.forEach(t => { if (t.isDeleted) allTrashed.push({ ...t, typeName: '一問一答', col: 'questionTables' }); });
+  allKanjiTables.forEach(k => { if (k.isDeleted) allTrashed.push({ ...k, typeName: '漢字', col: 'kanjiTables' }); });
+  allTimelines.forEach(l => { if (l.isDeleted) allTrashed.push({ ...l, typeName: '年表', col: 'timelineTables' }); });
+
+  if (allTrashed.length === 0) {
+    container.innerHTML = '<p class="text-gray-400 text-xs italic text-center py-8">ゴミ箱は空です。</p>';
+    return;
+  }
+
+  allTrashed.forEach(item => {
+    const row = document.createElement('div');
+    row.className = "flex justify-between items-center p-3 bg-slate-50 border rounded-lg text-xs";
+    row.innerHTML = `
+      <div>
+        <span class="px-2 py-0.5 bg-slate-200 text-slate-700 rounded font-bold text-[10px] mr-2">${item.typeName}</span>
+        <span class="font-bold text-slate-800">${item.title}</span>
+      </div>
+      <button class="restore-btn bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded transition">復元する</button>
+    `;
+    row.querySelector('.restore-btn').addEventListener('click', async () => {
+      await setDoc(doc(db, "users", currentUser.uid, item.col, item.id), { isDeleted: false }, { merge: true });
+      row.remove();
+      if (container.children.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-xs italic text-center py-8">ゴミ箱は空です。</p>';
+      }
+    });
+    container.appendChild(row);
+  });
+}
 
 function setActiveNavTab(tabId) {
   ['nav-docs', 'nav-collections', 'nav-tables', 'nav-kanji', 'nav-timeline'].forEach(id => {
@@ -90,46 +175,31 @@ function setupRealtimeListeners() {
   
   onSnapshot(query(collection(db, "users", currentUser.uid, "documents"), orderBy("updatedAt", "desc")), snap => {
     allDocuments = []; 
-    snap.forEach(d => {
-      const data = d.data();
-      if (!data.isDeleted) allDocuments.push({ id: d.id, ...data });
-    }); 
+    snap.forEach(d => allDocuments.push({ id: d.id, ...d.data() })); 
     if (currentMainView === 'documents') renderCurrentView();
   });
 
   onSnapshot(query(collection(db, "users", currentUser.uid, "collections"), orderBy("updatedAt", "desc")), snap => {
     allCollections = []; 
-    snap.forEach(d => {
-      const data = d.data();
-      if (!data.isDeleted) allCollections.push({ id: d.id, ...data });
-    }); 
+    snap.forEach(d => allCollections.push({ id: d.id, ...d.data() })); 
     if (currentMainView === 'collections') renderCurrentView();
   });
 
   onSnapshot(query(collection(db, "users", currentUser.uid, "questionTables"), orderBy("updatedAt", "desc")), snap => {
     allTables = []; 
-    snap.forEach(d => {
-      const data = d.data();
-      if (!data.isDeleted) allTables.push({ id: d.id, ...data });
-    }); 
+    snap.forEach(d => allTables.push({ id: d.id, ...d.data() })); 
     if (currentMainView === 'tables') renderCurrentView();
   });
 
   onSnapshot(query(collection(db, "users", currentUser.uid, "kanjiTables"), orderBy("updatedAt", "desc")), snap => {
     allKanjiTables = []; 
-    snap.forEach(d => {
-      const data = d.data();
-      if (!data.isDeleted) allKanjiTables.push({ id: d.id, ...data });
-    }); 
+    snap.forEach(d => allKanjiTables.push({ id: d.id, ...d.data() })); 
     if (currentMainView === 'kanji') renderCurrentView();
   });
 
   onSnapshot(query(collection(db, "users", currentUser.uid, "timelineTables"), orderBy("updatedAt", "desc")), snap => {
     allTimelines = []; 
-    snap.forEach(d => {
-      const data = d.data();
-      if (!data.isDeleted) allTimelines.push({ id: d.id, ...data });
-    }); 
+    snap.forEach(d => allTimelines.push({ id: d.id, ...d.data() })); 
     if (currentMainView === 'timeline') renderCurrentView();
   });
 }
@@ -138,18 +208,25 @@ function detachRealtimeListeners() {}
 function renderCurrentView() {
   if (currentMainView === 'documents') renderDocumentList(allDocuments);
   else if (currentMainView === 'collections') renderCollectionList(allCollections);
-  else if (currentMainView === 'tables') renderTableList(allTables);
-  else if (currentMainView === 'kanji') renderKanjiTableList(allKanjiTables);
+  else if (currentMainView === 'tables') renderTableList(allTables, hiddenUnits);
+  else if (currentMainView === 'kanji') renderKanjiTableList(allKanjiTables, hiddenUnits);
   else if (currentMainView === 'timeline') renderTimelineList(allTimelines);
 }
 
 function renderDocumentList(docs) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
-  container.innerHTML = docs.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題がありません。</p>' : '';
-  docs.forEach(data => {
+  const activeDocs = docs.filter(d => !d.isDeleted);
+  container.innerHTML = activeDocs.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題がありません。</p>' : '';
+  
+  // 単元フィルターの更新
+  updateUnitFilterUI(activeDocs);
+
+  activeDocs.forEach(data => {
+    if (data.unit && hiddenUnits.has(data.unit)) return; // 非表示単元はスキップ
+
     const item = document.createElement('div');
     item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${data.id === selectedDocId && !isPlayingCollection ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50'}`;
-    item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div><div class="text-[10px] text-gray-500">教科: ${data.subject || '未設定'} | 正解: ${data.stats?.correct || 0} / 誤答: ${data.stats?.incorrect || 0}</div>`;
+    item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div><div class="text-[10px] text-gray-500">教科: ${data.subject || '未設定'} ${data.unit ? `| 単元: ${data.unit}` : ''}</div>`;
     
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('del-btn') || e.target.classList.contains('edit-btn')) return;
@@ -165,9 +242,7 @@ function renderDocumentList(docs) {
       e.stopPropagation(); 
       if (confirm(`「${data.title}」をゴミ箱に移動しますか？`)) {
         await setDoc(doc(db, "users", currentUser.uid, "documents", data.id), { isDeleted: true }, { merge: true });
-        if (selectedDocId === data.id) {
-          clearDocumentView();
-        }
+        if (selectedDocId === data.id) clearDocumentView();
       }
     });
 
@@ -176,12 +251,40 @@ function renderDocumentList(docs) {
   });
 }
 
+function updateUnitFilterUI(docs) {
+  const units = [...new Set(docs.map(d => d.unit).filter(Boolean))];
+  const container = document.getElementById('unit-filter-container');
+  const checkboxesArea = document.getElementById('unit-checkboxes');
+  if (units.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+  container.classList.remove('hidden');
+  checkboxesArea.innerHTML = '';
+  units.forEach(u => {
+    const lbl = document.createElement('label');
+    lbl.className = "flex items-center gap-1 cursor-pointer";
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.checked = hiddenUnits.has(u);
+    chk.onchange = () => {
+      if (chk.checked) hiddenUnits.add(u);
+      else hiddenUnits.delete(u);
+      renderCurrentView();
+    };
+    lbl.appendChild(chk);
+    lbl.appendChild(document.createTextNode(u));
+    checkboxesArea.appendChild(lbl);
+  });
+}
+
 document.getElementById('create-collection-btn').addEventListener('click', () => openCollectionEditModal(null));
 
 function renderCollectionList(collections) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
-  container.innerHTML = collections.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
-  collections.forEach(c => {
+  const activeCollections = collections.filter(c => !c.isDeleted);
+  container.innerHTML = activeCollections.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
+  activeCollections.forEach(c => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition space-y-2';
     const count = c.documentIds ? c.documentIds.length : 0;
@@ -219,6 +322,7 @@ function openCollectionEditModal(collData) {
   const selectedIds = collData && collData.documentIds ? collData.documentIds : [];
 
   allDocuments.forEach(doc => {
+    if (doc.isDeleted) return;
     const label = document.createElement('label');
     label.className = "flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer";
     const isChecked = selectedIds.includes(doc.id);
@@ -238,13 +342,13 @@ document.getElementById('save-coll-modal-btn').addEventListener('click', async (
   const editingId = document.getElementById('editing-coll-id').value;
   const collId = editingId ? editingId : `coll_${Date.now()}`;
 
-  await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, documentIds, updatedAt: Date.now() }, { merge: true });
+  await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, documentIds, updatedAt: Date.now(), isDeleted: false }, { merge: true });
   alert("問題集を保存しました！");
   document.getElementById('collection-edit-modal').classList.add('hidden');
 });
 
 function startCollectionPlay(collData) {
-  const docs = collData.documentIds.map(id => allDocuments.find(d => d.id === id)).filter(Boolean);
+  const docs = collData.documentIds.map(id => allDocuments.find(d => d.id === id && !d.isDeleted)).filter(Boolean);
   if (docs.length === 0) { alert("問題集に有効な問題が含まれていません。"); return; }
   collectionPlayList = docs;
   collectionPlayIndex = 0;
@@ -353,11 +457,6 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   const c = parseInt(document.getElementById('stat-correct-input').value) || 0;
   const i = parseInt(document.getElementById('stat-incorrect-input').value) || 0;
   currentDocData.stats = { correct: c, incorrect: i };
-  if (i > 0) {
-    localStorage.setItem(`doc_mistake_time_${currentDocData.id}`, Date.now());
-  } else {
-    localStorage.removeItem(`doc_mistake_time_${currentDocData.id}`);
-  }
   await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: currentDocData.stats }, { merge: true });
   alert("正誤記録を保存しました！");
   document.getElementById('stats-modal').classList.add('hidden');
