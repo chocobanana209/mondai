@@ -1,5 +1,5 @@
 import { db, currentUser } from "./script.js";
-import { doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 let activeTableData = null;
 let exerciseQueue = [], retryQueue = [], currentExerciseIndex = 0, exerciseTotalCount = 0, isRetryLoop = false;
@@ -14,7 +14,14 @@ export function renderTableList(tables) {
     item.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold text-emerald-900 truncate">${t.title}</span><div class="flex gap-1"><button class="edit-table text-blue-600 font-bold">編集</button><button class="del-table text-red-500 font-bold">削除</button></div></div><div class="text-[10px] text-emerald-700">教科: ${t.subject || '未設定'} | 問題数: ${t.items ? t.items.length : 0}問</div><button class="start-exercise-btn w-full bg-emerald-600 text-white py-1.5 rounded font-bold">演習を始める 🎯</button>`;
     item.querySelector('.start-exercise-btn').addEventListener('click', (e) => { e.stopPropagation(); openTableConfigModal(t); });
     item.querySelector('.edit-table').addEventListener('click', (e) => { e.stopPropagation(); openTableRegisterForm(t); });
-    item.querySelector('.del-table').addEventListener('click', async (e) => { e.stopPropagation(); await deleteDoc(doc(db, "users", currentUser.uid, "questionTables", t.id)); });
+    
+    // 💡 削除ボタン（ゴミ箱移動）
+    item.querySelector('.del-table').addEventListener('click', async (e) => { 
+      e.stopPropagation(); 
+      if (confirm(`一問一答表「${t.title}」をゴミ箱に移動しますか？`)) {
+        await setDoc(doc(db, "users", currentUser.uid, "questionTables", t.id), { isDeleted: true }, { merge: true });
+      }
+    });
     container.appendChild(item);
   });
 }
