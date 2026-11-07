@@ -5,17 +5,42 @@ let activeTableData = null;
 let exerciseQueue = [], retryQueue = [], currentExerciseIndex = 0, exerciseTotalCount = 0, isRetryLoop = false;
 let activeModalRowId = null, activeModalType = 'question';
 
+// 列のデフォルト幅設定 (px または %)
+const DEFAULT_COL_WIDTHS = {
+  drag: "36px",
+  index: "36px",
+  question: "35%", // 問題を最優先で広く
+  qimg: "42px",    // ボタン（+）最適化
+  answer: "18%",
+  choice: "52px",  // チェックボックス最小
+  wrong: "14%",
+  cimg: "42px",    // ボタン（+）最適化
+  imp: "70px",     // 重要度最小
+  exp: "18%",
+  action: "42px"   // ゴミ箱アイコン最小
+};
+
 export function renderTableList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
   tables.forEach(t => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-emerald-50 hover:bg-emerald-100 border-emerald-300 cursor-pointer text-xs transition space-y-2';
-    item.innerHTML = `<div class="flex justify-between items-center"><span class="font-bold text-emerald-900 truncate">${t.title}</span><div class="flex gap-1"><button class="edit-table text-blue-600 font-bold">編集</button><button class="del-table text-red-500 font-bold">削除</button></div></div><div class="text-[10px] text-emerald-700">教科: ${t.subject || '未設定'} | 問題数: ${t.items ? t.items.length : 0}問</div><button class="start-exercise-btn w-full bg-emerald-600 text-white py-1.5 rounded font-bold">演習を始める 🎯</button>`;
+    item.innerHTML = `
+      <div class="flex justify-between items-center">
+        <span class="font-bold text-emerald-900 truncate">${t.title}</span>
+        <div class="flex gap-1">
+          <button class="edit-table text-blue-600 font-bold">編集</button>
+          <button class="del-table text-red-500 font-bold">削除</button>
+        </div>
+      </div>
+      <div class="text-[10px] text-emerald-700">
+        教科: ${t.subject || '未設定'} ${t.unit ? `| 単元: ${t.unit}` : ''} | 問題数: ${t.items ? t.items.length : 0}問
+      </div>
+      <button class="start-exercise-btn w-full bg-emerald-600 text-white py-1.5 rounded font-bold">演習を始める 🎯</button>
+    `;
     item.querySelector('.start-exercise-btn').addEventListener('click', (e) => { e.stopPropagation(); openTableConfigModal(t); });
     item.querySelector('.edit-table').addEventListener('click', (e) => { e.stopPropagation(); openTableRegisterForm(t); });
-    
-    // 💡 削除ボタン（ゴミ箱移動）
     item.querySelector('.del-table').addEventListener('click', async (e) => { 
       e.stopPropagation(); 
       if (confirm(`一問一答表「${t.title}」をゴミ箱に移動しますか？`)) {
@@ -195,7 +220,13 @@ function openTableRegisterForm(tableData = null) {
   document.getElementById('editing-table-id').value = tableData ? tableData.id : '';
   document.getElementById('table-name-input').value = tableData ? tableData.title : '';
   document.getElementById('table-subject-input').value = tableData ? (tableData.subject || "") : "";
+  const unitInput = document.getElementById('table-unit-input');
+  if (unitInput) unitInput.value = tableData ? (tableData.unit || "") : "";
   document.getElementById('table-importances-input').value = tableData && tableData.importances ? tableData.importances.join(', ') : "高, 中, 低";
+  
+  applyColumnWidths();
+  initTableResizers();
+
   renderTableRows(tableData ? tableData.items || [] : [createEmptyRowItem()]);
 }
 
@@ -215,69 +246,103 @@ function renderTableRows(items) {
   const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
 
   items.forEach((item, index) => {
-    const wrapper = document.createElement('tr');
-    wrapper.className = "border-b relative overflow-hidden group";
-    wrapper.dataset.itemId = item.id;
-    wrapper.dataset.imgData = item.questionImage || "";
-    wrapper.dataset.choiceImgData = item.choiceImage || "";
-    
-    const hasImg = (item.questionImage || "").length > 0;
-    const hasChoiceImg = (item.choiceImage || "").length > 0;
-
-    wrapper.innerHTML = `
-      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
-      <td class="p-2 text-center font-bold text-gray-500 row-index">${index + 1}</td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題...">${item.question || ''}</textarea></td>
-      <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasImg ? '画像付(変)' : '画像追加'}</button></td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答(複数可:カンマ区切り)">${item.answer || ''}</textarea></td>
-      <td class="p-2 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" ${item.isChoiceMode ? 'checked' : ''} title="選択肢形式にする"/></td>
-      <td class="p-2"><input type="text" class="w-full border rounded p-1 row-wrong" placeholder="誤答をカンマ区切り" value="${item.wrongChoices || ''}"/></td>
-      <td class="p-2 text-center"><button type="button" class="row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasChoiceImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${hasChoiceImg ? '画像付(変)' : '画像追加'}</button></td>
-      <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${item.explanation || ''}</textarea></td>
-      <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
-    `;
-
-    const handle = wrapper.querySelector('.drag-handle');
-    handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
-    handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
-
-    wrapper.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', item.id);
-      wrapper.classList.add('opacity-40');
-    });
-    wrapper.addEventListener('dragend', () => {
-      wrapper.classList.remove('opacity-40');
-      wrapper.removeAttribute('draggable');
-    });
-    wrapper.addEventListener('dragover', (e) => e.preventDefault());
-    wrapper.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const draggingRow = tbody.querySelector('.opacity-40');
-      if (draggingRow && draggingRow !== wrapper) {
-        const allRows = Array.from(tbody.querySelectorAll('tr'));
-        const draggedIdx = allRows.indexOf(draggingRow);
-        const targetIdx = allRows.indexOf(wrapper);
-        if (draggedIdx < targetIdx) {
-          tbody.insertBefore(draggingRow, wrapper.nextSibling);
-        } else {
-          tbody.insertBefore(draggingRow, wrapper);
-        }
-        reindexTableRows();
-      }
-    });
-
-    wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.imgData, 'question'));
-    wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.choiceImgData, 'choice'));
-    wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
-    tbody.appendChild(wrapper);
+    appendRowToTable(item, index, importances);
   });
+}
+
+function appendRowToTable(item, index, importances) {
+  const tbody = document.getElementById('qa-table-tbody'); if (!tbody) return;
+  const wrapper = document.createElement('tr');
+  wrapper.className = "border-b relative overflow-hidden group";
+  wrapper.dataset.itemId = item.id;
+  wrapper.dataset.imgData = item.questionImage || "";
+  wrapper.dataset.choiceImgData = item.choiceImage || "";
+  
+  const hasImg = (item.questionImage || "").length > 0;
+  const hasChoiceImg = (item.choiceImage || "").length > 0;
+
+  wrapper.innerHTML = `
+    <td class="p-1 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
+    <td class="p-1 text-center font-bold text-gray-500 row-index">${index + 1}</td>
+    <td class="p-1"><textarea rows="2" class="w-full border rounded p-1 row-q text-xs" placeholder="問題...">${item.question || ''}</textarea></td>
+    <td class="p-1 text-center"><button type="button" class="row-img-btn w-7 h-7 rounded text-xs font-bold transition flex items-center justify-center mx-auto ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}" title="問題画像添付">${hasImg ? '🖼️' : '+'}</button></td>
+    <td class="p-1"><textarea rows="2" class="w-full border rounded p-1 row-a text-xs" placeholder="解答(カンマ区切り)">${item.answer || ''}</textarea></td>
+    <td class="p-1 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" ${item.isChoiceMode ? 'checked' : ''} title="選択肢形式にする"/></td>
+    <td class="p-1"><input type="text" class="w-full border rounded p-1 row-wrong text-xs" placeholder="誤答(カンマ区切り)" value="${item.wrongChoices || ''}"/></td>
+    <td class="p-1 text-center"><button type="button" class="row-choice-img-btn w-7 h-7 rounded text-xs font-bold transition flex items-center justify-center mx-auto ${hasChoiceImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}" title="選択肢画像添付">${hasChoiceImg ? '🖼️' : '+'}</button></td>
+    <td class="p-1 text-center"><select class="w-full border rounded p-1 row-imp bg-white text-xs">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></td>
+    <td class="p-1"><textarea rows="2" class="w-full border rounded p-1 row-exp text-xs" placeholder="解説...">${item.explanation || ''}</textarea></td>
+    <td class="p-1 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold p-1 rounded hover:bg-red-50 text-sm" title="削除">🗑️</button></td>
+  `;
+
+  const handle = wrapper.querySelector('.drag-handle');
+  handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
+  handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
+
+  wrapper.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', item.id);
+    wrapper.classList.add('opacity-40');
+  });
+  wrapper.addEventListener('dragend', () => {
+    wrapper.classList.remove('opacity-40');
+    wrapper.removeAttribute('draggable');
+  });
+  wrapper.addEventListener('dragover', (e) => e.preventDefault());
+  wrapper.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const draggingRow = tbody.querySelector('.opacity-40');
+    if (draggingRow && draggingRow !== wrapper) {
+      const allRows = Array.from(tbody.querySelectorAll('tr'));
+      const draggedIdx = allRows.indexOf(draggingRow);
+      const targetIdx = allRows.indexOf(wrapper);
+      if (draggedIdx < targetIdx) {
+        tbody.insertBefore(draggingRow, wrapper.nextSibling);
+      } else {
+        tbody.insertBefore(draggingRow, wrapper);
+      }
+      reindexTableRows();
+    }
+  });
+
+  wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.imgData, 'question'));
+  wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.choiceImgData, 'choice'));
+  wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
+  tbody.appendChild(wrapper);
 }
 
 function reindexTableRows() {
   document.querySelectorAll('#qa-table-tbody tr').forEach((r, idx) => {
     const idxEl = r.querySelector('.row-index');
     if (idxEl) idxEl.innerText = idx + 1;
+  });
+}
+
+// 💡 【短問追加】クイック問題追加機能
+const addQaQuickRowBtn = document.getElementById('add-qa-quick-row-btn');
+if (addQaQuickRowBtn) {
+  addQaQuickRowBtn.addEventListener('click', () => {
+    const q = prompt("【短問追加】問題文を入力してください:");
+    if (!q || !q.trim()) return;
+    const a = prompt("【短問追加】解答を入力してください:");
+    if (!a || !a.trim()) return;
+
+    const tbody = document.getElementById('qa-table-tbody');
+    const importancesInput = document.getElementById('table-importances-input');
+    const importances = importancesInput ? importancesInput.value.split(',').map(s => s.trim()).filter(Boolean) : ["高", "中", "低"];
+    
+    const newItem = {
+      id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      question: q.trim(),
+      questionImage: "",
+      answer: a.trim(),
+      isChoiceMode: false,
+      wrongChoices: "",
+      choiceImage: "",
+      importance: "中",
+      explanation: ""
+    };
+    
+    appendRowToTable(newItem, tbody ? tbody.children.length : 0, importances);
   });
 }
 
@@ -290,59 +355,9 @@ if (addQaRowBtn) {
     let defaultExp = "";
     if (tbody.children.length > 0) defaultExp = tbody.lastElementChild.querySelector('.row-exp').value;
 
-    const newItemId = `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const wrapper = document.createElement('tr'); 
-    wrapper.className = "border-b"; 
-    wrapper.dataset.itemId = newItemId; 
-    wrapper.dataset.imgData = "";
-    wrapper.dataset.choiceImgData = "";
-
-    wrapper.innerHTML = `
-      <td class="p-2 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
-      <td class="p-2 text-center font-bold text-gray-500 row-index">${tbody.children.length + 1}</td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-q" placeholder="問題..."></textarea></td>
-      <td class="p-2 text-center"><button type="button" class="row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-a" placeholder="解答(複数可:カンマ区切り)"></textarea></td>
-      <td class="p-2 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" title="選択肢形式にする"/></td>
-      <td class="p-2"><input type="text" class="w-full border rounded p-1 row-wrong" placeholder="誤答をカンマ区切り"/></td>
-      <td class="p-2 text-center"><button type="button" class="row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700">画像追加</button></td>
-      <td class="p-2 text-center"><select class="w-full border rounded p-1 row-imp bg-white">${importances.map(i => `<option value="${i}">${i}</option>`).join('')}</select></td>
-      <td class="p-2"><textarea rows="2" class="w-full border rounded p-1 row-exp" placeholder="解説...">${defaultExp}</textarea></td>
-      <td class="p-2 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold px-2 py-1 text-xs bg-red-50 rounded">削除</button></td>
-    `;
-
-    const handle = wrapper.querySelector('.drag-handle');
-    handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
-    handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
-    wrapper.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', newItemId);
-      wrapper.classList.add('opacity-40');
-    });
-    wrapper.addEventListener('dragend', () => {
-      wrapper.classList.remove('opacity-40');
-      wrapper.removeAttribute('draggable');
-    });
-    wrapper.addEventListener('dragover', (e) => e.preventDefault());
-    wrapper.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const draggingRow = tbody.querySelector('.opacity-40');
-      if (draggingRow && draggingRow !== wrapper) {
-        const allRows = Array.from(tbody.querySelectorAll('tr'));
-        const draggedIdx = allRows.indexOf(draggingRow);
-        const targetIdx = allRows.indexOf(wrapper);
-        if (draggedIdx < targetIdx) {
-          tbody.insertBefore(draggingRow, wrapper.nextSibling);
-        } else {
-          tbody.insertBefore(draggingRow, wrapper);
-        }
-        reindexTableRows();
-      }
-    });
-
-    wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.imgData, 'question'));
-    wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(newItemId, wrapper.dataset.choiceImgData, 'choice'));
-    wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
-    tbody.appendChild(wrapper);
+    const newItem = createEmptyRowItem();
+    newItem.explanation = defaultExp;
+    appendRowToTable(newItem, tbody.children.length, importances);
   });
 }
 
@@ -353,6 +368,8 @@ if (saveTableDocBtn) {
     const title = document.getElementById('table-name-input').value.trim();
     if (!title) { alert("タイトルを入力してください。"); return; }
     const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
+    const unitInput = document.getElementById('table-unit-input');
+    const unit = unitInput ? unitInput.value.trim() : "";
 
     const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
     const items = [];
@@ -379,8 +396,63 @@ if (saveTableDocBtn) {
     });
 
     const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
-    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, importances, items, updatedAt: Date.now() }, { merge: true });
+    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, unit, importances, items, updatedAt: Date.now() }, { merge: true });
     alert("一問一答表を保存しました！"); closeTableRegisterForm();
+  });
+}
+
+// 💡 スプレッドシート列幅のリサイズ機能＆ストレージ保存
+function applyColumnWidths() {
+  const savedWidths = JSON.parse(localStorage.getItem('mondai_col_widths')) || DEFAULT_COL_WIDTHS;
+  document.querySelectorAll('#qa-spread-table th[data-col]').forEach(th => {
+    const col = th.dataset.col;
+    if (savedWidths[col]) {
+      th.style.width = savedWidths[col];
+    }
+  });
+}
+
+function initTableResizers() {
+  const ths = document.querySelectorAll('#qa-spread-table th.resizable-th');
+  ths.forEach(th => {
+    const resizer = th.querySelector('.resizer');
+    if (!resizer) return;
+
+    let startX = 0, startWidth = 0;
+
+    const onMouseMove = (e) => {
+      const newWidth = Math.max(30, startWidth + (e.clientX - startX));
+      th.style.width = `${newWidth}px`;
+    };
+
+    const onMouseUp = () => {
+      resizer.classList.remove('resizing');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      // カスタム列幅の保存
+      const currentWidths = JSON.parse(localStorage.getItem('mondai_col_widths')) || { ...DEFAULT_COL_WIDTHS };
+      currentWidths[th.dataset.col] = th.style.width;
+      localStorage.setItem('mondai_col_widths', JSON.stringify(currentWidths));
+    };
+
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = th.offsetWidth;
+      resizer.classList.add('resizing');
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  });
+}
+
+// 列幅リセットボタンの動作
+const resetColWidthBtn = document.getElementById('reset-col-width-btn');
+if (resetColWidthBtn) {
+  resetColWidthBtn.addEventListener('click', () => {
+    localStorage.removeItem('mondai_col_widths');
+    applyColumnWidths();
   });
 }
 
@@ -411,11 +483,11 @@ if (qaImgRemoveBtn) {
       if (activeModalType === 'choice') {
         tr.dataset.choiceImgData = "";
         const btn = tr.querySelector('.row-choice-img-btn');
-        if (btn) { btn.className = "row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700"; btn.innerText = "画像追加"; }
+        if (btn) { btn.className = "row-choice-img-btn w-7 h-7 rounded text-xs font-bold bg-slate-200 text-slate-700 flex items-center justify-center mx-auto"; btn.innerText = "+"; }
       } else {
         tr.dataset.imgData = "";
         const btn = tr.querySelector('.row-img-btn');
-        if (btn) { btn.className = "row-img-btn px-2 py-1 rounded text-[10px] font-bold bg-slate-200 text-slate-700"; btn.innerText = "画像追加"; }
+        if (btn) { btn.className = "row-img-btn w-7 h-7 rounded text-xs font-bold bg-slate-200 text-slate-700 flex items-center justify-center mx-auto"; btn.innerText = "+"; }
       }
     }
     document.getElementById('qa-image-modal').classList.add('hidden');
@@ -449,11 +521,17 @@ if (qaImgSaveBtn) {
       if (activeModalType === 'choice') {
         const hasImg = (tr.dataset.choiceImgData || "").length > 0;
         const btn = tr.querySelector('.row-choice-img-btn');
-        if (btn) { btn.className = `row-choice-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; btn.innerText = hasImg ? '画像付(変)' : '画像追加'; }
+        if (btn) { 
+          btn.className = `row-choice-img-btn w-7 h-7 rounded text-xs font-bold flex items-center justify-center mx-auto ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; 
+          btn.innerText = hasImg ? '🖼️' : '+'; 
+        }
       } else {
         const hasImg = (tr.dataset.imgData || "").length > 0;
         const btn = tr.querySelector('.row-img-btn');
-        if (btn) { btn.className = `row-img-btn px-2 py-1 rounded text-[10px] font-bold ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; btn.innerText = hasImg ? '画像付(変)' : '画像追加'; }
+        if (btn) { 
+          btn.className = `row-img-btn w-7 h-7 rounded text-xs font-bold flex items-center justify-center mx-auto ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`; 
+          btn.innerText = hasImg ? '🖼️' : '+'; 
+        }
       }
     }
     document.getElementById('qa-image-modal').classList.add('hidden');
