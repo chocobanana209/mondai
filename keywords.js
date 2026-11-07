@@ -5,25 +5,26 @@ let activeTableData = null;
 let exerciseQueue = [], retryQueue = [], currentExerciseIndex = 0, exerciseTotalCount = 0, isRetryLoop = false;
 let activeModalRowId = null, activeModalType = 'question';
 
-// 列のデフォルト幅設定 (px または %)
 const DEFAULT_COL_WIDTHS = {
   drag: "36px",
   index: "36px",
-  question: "35%", // 問題を最優先で広く
-  qimg: "42px",    // ボタン（+）最適化
+  question: "35%",
+  qimg: "42px",
   answer: "18%",
-  choice: "52px",  // チェックボックス最小
+  choice: "52px",
   wrong: "14%",
-  cimg: "42px",    // ボタン（+）最適化
-  imp: "70px",     // 重要度最小
+  cimg: "42px",
+  imp: "70px",
   exp: "18%",
-  action: "42px"   // ゴミ箱アイコン最小
+  action: "42px"
 };
 
-export function renderTableList(tables) {
+export function renderTableList(tables, hiddenUnits) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
-  container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
-  tables.forEach(t => {
+  const activeTables = tables.filter(t => !t.isDeleted && !(t.unit && hiddenUnits.has(t.unit)));
+  container.innerHTML = activeTables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
+  
+  activeTables.forEach(t => {
     const item = document.createElement('div');
     item.className = 'p-3 rounded-lg border bg-emerald-50 hover:bg-emerald-100 border-emerald-300 cursor-pointer text-xs transition space-y-2';
     item.innerHTML = `
@@ -176,20 +177,34 @@ document.getElementById('t-ex-show-ans-btn').addEventListener('click', () => {
 
 document.getElementById('t-ex-correct-btn').addEventListener('click', () => {
   const item = exerciseQueue[currentExerciseIndex];
-  localStorage.setItem(`qa_hist_${activeTableData.id}_${item.id}`, 'correct');
-  localStorage.removeItem(`qa_mistake_time_${activeTableData.id}_${item.id}`);
+  // 履歴と連続正解数の更新（間隔反復用）
+  updateSpacedRepetitionRecord(activeTableData.id, item.id, true);
   currentExerciseIndex++;
   renderTableExerciseCurrentItem();
 });
 
 document.getElementById('t-ex-incorrect-btn').addEventListener('click', () => {
   const item = exerciseQueue[currentExerciseIndex];
-  localStorage.setItem(`qa_hist_${activeTableData.id}_${item.id}`, 'incorrect');
-  localStorage.setItem(`qa_mistake_time_${activeTableData.id}_${item.id}`, Date.now());
+  updateSpacedRepetitionRecord(activeTableData.id, item.id, false);
   if (!retryQueue.includes(item)) retryQueue.push(item);
   currentExerciseIndex++;
   renderTableExerciseCurrentItem();
 });
+
+// 間隔反復・連続正解数の記録ヘルパー
+function updateSpacedRepetitionRecord(tableId, itemId, isCorrect) {
+  const key = `sr_${tableId}_${itemId}`;
+  let data = JSON.parse(localStorage.getItem(key)) || { streak: 0, lastTime: 0 };
+  const now = Date.now();
+  if (isCorrect) {
+    data.streak += 1;
+    data.lastTime = now;
+  } else {
+    data.streak = 0;
+    data.lastTime = now;
+  }
+  localStorage.setItem(key, JSON.stringify(data));
+}
 
 document.getElementById('restart-table-ex-btn').addEventListener('click', () => openTableConfigModal(activeTableData));
 document.getElementById('exit-table-player-btn').addEventListener('click', () => {
@@ -250,6 +265,11 @@ function renderTableRows(items) {
   });
 }
 
+function autoResizeTextarea(textarea) {
+  textarea.style.height = 'auto';
+  textarea.style.height = (textarea.scrollHeight + 4) + 'px';
+}
+
 function appendRowToTable(item, index, importances) {
   const tbody = document.getElementById('qa-table-tbody'); if (!tbody) return;
   const wrapper = document.createElement('tr');
@@ -264,16 +284,22 @@ function appendRowToTable(item, index, importances) {
   wrapper.innerHTML = `
     <td class="p-1 text-center text-gray-400 cursor-grab font-bold drag-handle select-none" title="ドラッグして移動">≡</td>
     <td class="p-1 text-center font-bold text-gray-500 row-index">${index + 1}</td>
-    <td class="p-1"><textarea rows="2" class="w-full border rounded p-1 row-q text-xs" placeholder="問題...">${item.question || ''}</textarea></td>
+    <td class="p-1"><textarea rows="1" class="w-full border rounded p-1 row-q text-xs auto-expand" placeholder="問題...">${item.question || ''}</textarea></td>
     <td class="p-1 text-center"><button type="button" class="row-img-btn w-7 h-7 rounded text-xs font-bold transition flex items-center justify-center mx-auto ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}" title="問題画像添付">${hasImg ? '🖼️' : '+'}</button></td>
-    <td class="p-1"><textarea rows="2" class="w-full border rounded p-1 row-a text-xs" placeholder="解答(カンマ区切り)">${item.answer || ''}</textarea></td>
+    <td class="p-1"><textarea rows="1" class="w-full border rounded p-1 row-a text-xs auto-expand" placeholder="解答(カンマ区切り)">${item.answer || ''}</textarea></td>
     <td class="p-1 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" ${item.isChoiceMode ? 'checked' : ''} title="選択肢形式にする"/></td>
     <td class="p-1"><input type="text" class="w-full border rounded p-1 row-wrong text-xs" placeholder="誤答(カンマ区切り)" value="${item.wrongChoices || ''}"/></td>
     <td class="p-1 text-center"><button type="button" class="row-choice-img-btn w-7 h-7 rounded text-xs font-bold transition flex items-center justify-center mx-auto ${hasChoiceImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}" title="選択肢画像添付">${hasChoiceImg ? '🖼️' : '+'}</button></td>
     <td class="p-1 text-center"><select class="w-full border rounded p-1 row-imp bg-white text-xs">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></td>
-    <td class="p-1"><textarea rows="2" class="w-full border rounded p-1 row-exp text-xs" placeholder="解説...">${item.explanation || ''}</textarea></td>
+    <td class="p-1"><textarea rows="1" class="w-full border rounded p-1 row-exp text-xs auto-expand" placeholder="解説...">${item.explanation || ''}</textarea></td>
     <td class="p-1 text-center"><button type="button" class="row-del-btn text-red-500 hover:text-red-700 font-bold p-1 rounded hover:bg-red-50 text-sm" title="削除">🗑️</button></td>
   `;
+
+  // 自動伸縮の適用
+  wrapper.querySelectorAll('textarea.auto-expand').forEach(ta => {
+    setTimeout(() => autoResizeTextarea(ta), 0);
+    ta.addEventListener('input', () => autoResizeTextarea(ta));
+  });
 
   const handle = wrapper.querySelector('.drag-handle');
   handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
@@ -317,7 +343,6 @@ function reindexTableRows() {
   });
 }
 
-// 💡 【短問追加】クイック問題追加機能
 const addQaQuickRowBtn = document.getElementById('add-qa-quick-row-btn');
 if (addQaQuickRowBtn) {
   addQaQuickRowBtn.addEventListener('click', () => {
@@ -396,19 +421,16 @@ if (saveTableDocBtn) {
     });
 
     const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
-    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, unit, importances, items, updatedAt: Date.now() }, { merge: true });
+    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, unit, importances, items, updatedAt: Date.now(), isDeleted: false }, { merge: true });
     alert("一問一答表を保存しました！"); closeTableRegisterForm();
   });
 }
 
-// 💡 スプレッドシート列幅のリサイズ機能＆ストレージ保存
 function applyColumnWidths() {
   const savedWidths = JSON.parse(localStorage.getItem('mondai_col_widths')) || DEFAULT_COL_WIDTHS;
   document.querySelectorAll('#qa-spread-table th[data-col]').forEach(th => {
     const col = th.dataset.col;
-    if (savedWidths[col]) {
-      th.style.width = savedWidths[col];
-    }
+    if (savedWidths[col]) th.style.width = savedWidths[col];
   });
 }
 
@@ -417,25 +439,19 @@ function initTableResizers() {
   ths.forEach(th => {
     const resizer = th.querySelector('.resizer');
     if (!resizer) return;
-
     let startX = 0, startWidth = 0;
-
     const onMouseMove = (e) => {
       const newWidth = Math.max(30, startWidth + (e.clientX - startX));
       th.style.width = `${newWidth}px`;
     };
-
     const onMouseUp = () => {
       resizer.classList.remove('resizing');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-
-      // カスタム列幅の保存
       const currentWidths = JSON.parse(localStorage.getItem('mondai_col_widths')) || { ...DEFAULT_COL_WIDTHS };
       currentWidths[th.dataset.col] = th.style.width;
       localStorage.setItem('mondai_col_widths', JSON.stringify(currentWidths));
     };
-
     resizer.addEventListener('mousedown', (e) => {
       e.preventDefault();
       startX = e.clientX;
@@ -447,7 +463,6 @@ function initTableResizers() {
   });
 }
 
-// 列幅リセットボタンの動作
 const resetColWidthBtn = document.getElementById('reset-col-width-btn');
 if (resetColWidthBtn) {
   resetColWidthBtn.addEventListener('click', () => {
@@ -464,11 +479,8 @@ function openQaImageModal(rowId, imgData, type = 'question') {
   document.getElementById('qa-modal-title').innerText = type === 'choice' ? "選択肢画像の添付" : "問題画像の添付";
   
   const preview = document.getElementById('qa-modal-img-preview');
-  if (imgData) {
-    preview.innerHTML = `<img src="${imgData}" class="max-h-32 mx-auto rounded"/>`;
-  } else {
-    preview.innerHTML = `<span class="text-gray-400 text-xs">画像未選択</span>`;
-  }
+  if (imgData) preview.innerHTML = `<img src="${imgData}" class="max-h-32 mx-auto rounded"/>`;
+  else preview.innerHTML = `<span class="text-gray-400 text-xs">画像未選択</span>`;
   document.getElementById('qa-image-modal').classList.remove('hidden');
 }
 
