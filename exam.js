@@ -3,7 +3,6 @@ import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 
 let activeExamData = null;
 
-// --- 試験一覧の描画（サイドバー） ---
 export function renderExamList(exams, allData) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   const activeExams = exams.filter(e => !e.isDeleted);
@@ -35,7 +34,6 @@ export function renderExamList(exams, allData) {
   });
 }
 
-// --- 試験登録・編集フォームを開く ---
 export function openExamRegisterForm(examData = null, allData = {}) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'table-register-form-container', 'kanji-register-form-container', 'timeline-register-form-container', 'exam-register-container', 'exam-player-container'].forEach(id => {
     const el = document.getElementById(id);
@@ -59,7 +57,6 @@ export function openExamRegisterForm(examData = null, allData = {}) {
   const pdfData = examData ? (examData.pdfData || '') : '';
   const selectedComponents = examData ? (examData.components || []) : [];
 
-  // 教材候補リストを作成
   let componentOptionsHtml = '';
   const addCompOptions = (arr, typeName, typeKey) => {
     if (!arr) return;
@@ -117,7 +114,6 @@ export function openExamRegisterForm(examData = null, allData = {}) {
     </div>
   `;
 
-  // PDFファイル読み込み処理
   document.getElementById('exam-pdf-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -129,13 +125,11 @@ export function openExamRegisterForm(examData = null, allData = {}) {
     reader.readAsDataURL(file);
   });
 
-  // キャンセルボタン
   document.getElementById('cancel-exam-btn').addEventListener('click', () => {
     container.classList.add('hidden');
     document.getElementById('view-mode-container').classList.remove('hidden');
   });
 
-  // 保存ボタン
   document.getElementById('save-exam-btn').addEventListener('click', async () => {
     const titleVal = document.getElementById('exam-name-input').value.trim();
     if (!titleVal) { alert("試験タイトルを入力してください。"); return; }
@@ -167,7 +161,6 @@ export function openExamRegisterForm(examData = null, allData = {}) {
   });
 }
 
-// --- 試験プレイヤー画面 ---
 function openExamPlayer(examData) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'exam-register-container'].forEach(id => {
     const el = document.getElementById(id);
@@ -222,7 +215,6 @@ function openExamPlayer(examData) {
     return;
   }
 
-  // 各コンポーネントのタイトルや実データを取得してリスト表示
   examData.components.forEach(comp => {
     const div = document.createElement('div');
     div.className = "p-3 bg-white border rounded-lg flex justify-between items-center text-xs hover:bg-slate-50 transition";
