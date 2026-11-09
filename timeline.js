@@ -3,7 +3,6 @@ import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 
 let activeTimelineData = null;
 
-// --- 年表 リスト描画（サイドバー） ---
 export function renderTimelineList(tables) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   container.innerHTML = tables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">年表がありません。</p>' : '';
@@ -24,7 +23,6 @@ export function renderTimelineList(tables) {
     item.querySelector('.view-timeline-btn').addEventListener('click', (e) => { e.stopPropagation(); openTimelineView(t); });
     item.querySelector('.edit-timeline').addEventListener('click', (e) => { e.stopPropagation(); openTimelineRegisterForm(t); });
     
-    // 💡 削除ボタン（ゴミ箱移動）
     item.querySelector('.del-timeline').addEventListener('click', async (e) => { 
       e.stopPropagation(); 
       if (confirm(`年表「${t.title}」をゴミ箱に移動しますか？`)) {
@@ -40,18 +38,12 @@ function openTimelineView(tableData) {
   openTimelineRegisterForm(tableData);
 }
 
-const btnNavTimelineReg = document.getElementById('btn-nav-timeline-register');
-if (btnNavTimelineReg) {
-  btnNavTimelineReg.addEventListener('click', () => openTimelineRegisterForm(null));
-}
-
 const cancelTimelineRegBtn = document.getElementById('cancel-timeline-register-btn');
 if (cancelTimelineRegBtn) {
   cancelTimelineRegBtn.addEventListener('click', closeTimelineRegisterForm);
 }
 
-function openTimelineRegisterForm(timelineData = null) {
-  // 修正: 存在しない 'register-form-container' を削除し、他のファイルと合わせた安全な一括非表示処理に変更
+export function openTimelineRegisterForm(timelineData = null) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'table-register-form-container', 'kanji-register-form-container', 'timeline-register-form-container'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
