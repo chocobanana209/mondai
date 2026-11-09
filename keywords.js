@@ -54,47 +54,58 @@ export function renderTableList(tables, hiddenUnits) {
 
 function openTableConfigModal(tableData) {
   activeTableData = tableData;
-  document.getElementById('table-config-modal').classList.remove('hidden');
+  const modal = document.getElementById('table-config-modal');
+  if (modal) modal.classList.remove('hidden');
 }
 
-document.getElementById('close-table-config-modal').addEventListener('click', () => {
-  document.getElementById('table-config-modal').classList.add('hidden');
-});
+const closeTableConfigModalBtn = document.getElementById('close-table-config-modal');
+if (closeTableConfigModalBtn) {
+  closeTableConfigModalBtn.addEventListener('click', () => {
+    const modal = document.getElementById('table-config-modal');
+    if (modal) modal.classList.add('hidden');
+  });
+}
 
-document.getElementById('start-table-exercise-btn').addEventListener('click', () => {
-  const order = document.getElementById('config-order-select').value;
-  const scope = document.getElementById('config-scope-select').value;
-  const limit = parseInt(document.getElementById('config-limit-input').value) || 10;
+const startTableExerciseBtn = document.getElementById('start-table-exercise-btn');
+if (startTableExerciseBtn) {
+  startTableExerciseBtn.addEventListener('click', () => {
+    const order = document.getElementById('config-order-select')?.value || 'normal';
+    const scope = document.getElementById('config-scope-select')?.value || 'all';
+    const limit = parseInt(document.getElementById('config-limit-input')?.value) || 10;
 
-  let items = [...activeTableData.items];
-  items = items.filter(item => !item.unit || !hiddenUnits.has(item.unit));
+    let items = [...activeTableData.items];
+    items = items.filter(item => !item.unit || !hiddenUnits.has(item.unit));
 
-  if (scope === 'mistaken') {
-    items = items.filter(item => localStorage.getItem(`qa_hist_${activeTableData.id}_${item.id}`) === 'incorrect');
-    if (items.length === 0) { alert("間違えた問題がありません。"); return; }
-  }
+    if (scope === 'mistaken') {
+      items = items.filter(item => localStorage.getItem(`qa_hist_${activeTableData.id}_${item.id}`) === 'incorrect');
+      if (items.length === 0) { alert("間違えた問題がありません。"); return; }
+    }
 
-  if (order === 'random') items.sort(() => Math.random() - 0.5);
-  exerciseQueue = items.slice(0, limit);
-  retryQueue = [];
-  currentExerciseIndex = 0;
-  exerciseTotalCount = exerciseQueue.length;
-  isRetryLoop = false;
+    if (order === 'random') items.sort(() => Math.random() - 0.5);
+    exerciseQueue = items.slice(0, limit);
+    retryQueue = [];
+    currentExerciseIndex = 0;
+    exerciseTotalCount = exerciseQueue.length;
+    isRetryLoop = false;
 
-  document.getElementById('table-config-modal').classList.add('hidden');
-  document.getElementById('view-mode-container').classList.add('hidden');
-  document.getElementById('collection-player-container').classList.add('hidden');
-  document.getElementById('kanji-player-container').classList.add('hidden');
-  document.getElementById('refresh-mode-container').classList.add('hidden');
-  document.getElementById('timeline-register-form-container').classList.add('hidden');
-  document.getElementById('kanji-register-form-container').classList.add('hidden');
-  document.getElementById('table-register-form-container').classList.add('hidden');
-  document.getElementById('table-player-container').classList.remove('hidden');
-  document.getElementById('table-exercise-content').classList.remove('hidden');
-  document.getElementById('table-exercise-result').classList.add('hidden');
+    const configModal = document.getElementById('table-config-modal');
+    if (configModal) configModal.classList.add('hidden');
 
-  renderTableExerciseCurrentItem();
-});
+    ['view-mode-container', 'collection-player-container', 'kanji-player-container', 'refresh-mode-container', 'timeline-register-form-container', 'kanji-register-form-container', 'table-register-form-container'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+
+    const tablePlayer = document.getElementById('table-player-container');
+    if (tablePlayer) tablePlayer.classList.remove('hidden');
+    const tableExContent = document.getElementById('table-exercise-content');
+    if (tableExContent) tableExContent.classList.remove('hidden');
+    const tableExResult = document.getElementById('table-exercise-result');
+    if (tableExResult) tableExResult.classList.add('hidden');
+
+    renderTableExerciseCurrentItem();
+  });
+}
 
 function renderTableExerciseCurrentItem() {
   if (currentExerciseIndex >= exerciseQueue.length) {
@@ -107,93 +118,121 @@ function renderTableExerciseCurrentItem() {
       renderTableExerciseCurrentItem();
       return;
     }
-    document.getElementById('table-exercise-content').classList.add('hidden');
-    document.getElementById('table-exercise-result').classList.remove('hidden');
-    document.getElementById('table-result-summary').innerText = `全 ${exerciseTotalCount} 問の一問一答演習を完了しました！`;
+    const content = document.getElementById('table-exercise-content');
+    if (content) content.classList.add('hidden');
+    const result = document.getElementById('table-exercise-result');
+    if (result) result.classList.remove('hidden');
+    const summary = document.getElementById('table-result-summary');
+    if (summary) summary.innerText = `全 ${exerciseTotalCount} 問の一問一答演習を完了しました！`;
     return;
   }
 
   const item = exerciseQueue[currentExerciseIndex];
-  document.getElementById('table-progress-count').innerText = `問題 ${currentExerciseIndex + 1} / ${exerciseQueue.length}`;
-  document.getElementById('table-item-unit-badge').innerText = item.unit ? `単元: ${item.unit}` : '単元なし';
-  document.getElementById('table-loop-badge').innerText = isRetryLoop ? "🔥 リトライ周回" : "通常周回";
-  document.getElementById('t-ex-question').innerText = item.question || "";
+  const progressCount = document.getElementById('table-progress-count');
+  if (progressCount) progressCount.innerText = `問題 ${currentExerciseIndex + 1} / ${exerciseQueue.length}`;
+  const unitBadge = document.getElementById('table-item-unit-badge');
+  if (unitBadge) unitBadge.innerText = item.unit ? `単元: ${item.unit}` : '単元なし';
+  const loopBadge = document.getElementById('table-loop-badge');
+  if (loopBadge) loopBadge.innerText = isRetryLoop ? "🔥 リトライ周回" : "通常周回";
+  const qEl = document.getElementById('t-ex-question');
+  if (qEl) qEl.innerText = item.question || "";
   
   const imgArea = document.getElementById('t-ex-q-image-area');
-  if (item.questionImage) {
-    imgArea.innerHTML = `<img src="${item.questionImage}" class="max-h-48 rounded mx-auto mt-2"/>`;
-  } else {
-    imgArea.innerHTML = '';
+  if (imgArea) {
+    if (item.questionImage) {
+      imgArea.innerHTML = `<img src="${item.questionImage}" class="max-h-48 rounded mx-auto mt-2"/>`;
+    } else {
+      imgArea.innerHTML = '';
+    }
   }
 
   const choicesArea = document.getElementById('t-ex-choices-area');
   const hasWrongChoices = item.wrongChoices && item.wrongChoices.trim().length > 0;
 
-  if (hasWrongChoices) {
-    choicesArea.classList.remove('hidden');
-    choicesArea.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-1">選択肢：</div>`;
-    
-    const correctList = (item.answer || "").split(',').map(s => s.trim()).filter(Boolean);
-    const primaryCorrect = correctList.length > 0 ? correctList[0] : "";
-    const wrongList = item.wrongChoices.split(',').map(s => s.trim()).filter(Boolean);
-    
-    let allChoices = [{ text: primaryCorrect, isCorrect: true, img: item.choiceImage || "" }];
-    wrongList.forEach(w => allChoices.push({ text: w, isCorrect: false, img: "" }));
-    allChoices.sort(() => Math.random() - 0.5);
+  if (choicesArea) {
+    if (hasWrongChoices) {
+      choicesArea.classList.remove('hidden');
+      choicesArea.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-1">選択肢：</div>`;
+      
+      const correctList = (item.answer || "").split(',').map(s => s.trim()).filter(Boolean);
+      const primaryCorrect = correctList.length > 0 ? correctList[0] : "";
+      const wrongList = item.wrongChoices.split(',').map(s => s.trim()).filter(Boolean);
+      
+      let allChoices = [{ text: primaryCorrect, isCorrect: true, img: item.choiceImage || "" }];
+      wrongList.forEach(w => allChoices.push({ text: w, isCorrect: false, img: "" }));
+      allChoices.sort(() => Math.random() - 0.5);
 
-    const grid = document.createElement('div');
-    grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-2";
-    allChoices.forEach((ch, idx) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = "p-3 border rounded-lg bg-white hover:bg-slate-50 text-left text-xs font-medium flex items-center gap-3 transition shadow-xs";
-      btn.innerHTML = `<span class="font-bold text-blue-600">${idx + 1}.</span> <span>${ch.text}</span> ${ch.img ? `<img src="${ch.img}" class="max-h-12 ml-auto rounded"/>` : ''}`;
-      btn.onclick = () => {
-        grid.querySelectorAll('button').forEach(b => b.disabled = true);
-        const isMatched = correctList.some(c => c === ch.text);
-        if (isMatched) {
-          btn.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
-        } else {
-          btn.className = "p-3 border-2 border-red-500 rounded-lg bg-red-50 text-left text-xs font-bold flex items-center gap-3";
-        }
-        document.getElementById('t-ex-show-ans-btn').click();
-      };
-      grid.appendChild(btn);
-    });
-    choicesArea.appendChild(grid);
-  } else {
-    choicesArea.classList.add('hidden');
-    choicesArea.innerHTML = '';
+      const grid = document.createElement('div');
+      grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-2";
+      allChoices.forEach((ch, idx) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = "p-3 border rounded-lg bg-white hover:bg-slate-50 text-left text-xs font-medium flex items-center gap-3 transition shadow-xs";
+        btn.innerHTML = `<span class="font-bold text-blue-600">${idx + 1}.</span> <span>${ch.text}</span> ${ch.img ? `<img src="${ch.img}" class="max-h-12 ml-auto rounded"/>` : ''}`;
+        btn.onclick = () => {
+          grid.querySelectorAll('button').forEach(b => b.disabled = true);
+          const isMatched = correctList.some(c => c === ch.text);
+          if (isMatched) {
+            btn.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
+          } else {
+            btn.className = "p-3 border-2 border-red-500 rounded-lg bg-red-50 text-left text-xs font-bold flex items-center gap-3";
+          }
+          const showAnsBtn = document.getElementById('t-ex-show-ans-btn');
+          if (showAnsBtn) showAnsBtn.click();
+        };
+        grid.appendChild(btn);
+      });
+      choicesArea.appendChild(grid);
+    } else {
+      choicesArea.classList.add('hidden');
+      choicesArea.innerHTML = '';
+    }
   }
 
-  document.getElementById('t-ex-answer').innerText = item.answer || "";
-  document.getElementById('t-ex-explanation').innerText = item.explanation || "（解説なし）";
+  const ansEl = document.getElementById('t-ex-answer');
+  if (ansEl) ansEl.innerText = item.answer || "";
+  const expEl = document.getElementById('t-ex-explanation');
+  if (expEl) expEl.innerText = item.explanation || "（解説なし）";
 
-  document.getElementById('t-ex-answer-area').classList.add('hidden');
-  document.getElementById('t-ex-show-ans-btn').classList.remove('hidden');
-  document.getElementById('t-ex-grade-buttons').classList.add('hidden');
+  const ansArea = document.getElementById('t-ex-answer-area');
+  if (ansArea) ansArea.classList.add('hidden');
+  const showAnsBtn = document.getElementById('t-ex-show-ans-btn');
+  if (showAnsBtn) showAnsBtn.classList.remove('hidden');
+  const gradeBtns = document.getElementById('t-ex-grade-buttons');
+  if (gradeBtns) gradeBtns.classList.add('hidden');
 }
 
-document.getElementById('t-ex-show-ans-btn').addEventListener('click', () => {
-  document.getElementById('t-ex-answer-area').classList.remove('hidden');
-  document.getElementById('t-ex-show-ans-btn').classList.add('hidden');
-  document.getElementById('t-ex-grade-buttons').classList.remove('hidden');
-});
+const tExShowAnsBtn = document.getElementById('t-ex-show-ans-btn');
+if (tExShowAnsBtn) {
+  tExShowAnsBtn.addEventListener('click', () => {
+    const ansArea = document.getElementById('t-ex-answer-area');
+    if (ansArea) ansArea.classList.remove('hidden');
+    tExShowAnsBtn.classList.add('hidden');
+    const gradeBtns = document.getElementById('t-ex-grade-buttons');
+    if (gradeBtns) gradeBtns.classList.remove('hidden');
+  });
+}
 
-document.getElementById('t-ex-correct-btn').addEventListener('click', () => {
-  const item = exerciseQueue[currentExerciseIndex];
-  updateSpacedRepetitionRecord(activeTableData.id, item.id, true);
-  currentExerciseIndex++;
-  renderTableExerciseCurrentItem();
-});
+const tExCorrectBtn = document.getElementById('t-ex-correct-btn');
+if (tExCorrectBtn) {
+  tExCorrectBtn.addEventListener('click', () => {
+    const item = exerciseQueue[currentExerciseIndex];
+    if (item && activeTableData) updateSpacedRepetitionRecord(activeTableData.id, item.id, true);
+    currentExerciseIndex++;
+    renderTableExerciseCurrentItem();
+  });
+}
 
-document.getElementById('t-ex-incorrect-btn').addEventListener('click', () => {
-  const item = exerciseQueue[currentExerciseIndex];
-  updateSpacedRepetitionRecord(activeTableData.id, item.id, false);
-  if (!retryQueue.includes(item)) retryQueue.push(item);
-  currentExerciseIndex++;
-  renderTableExerciseCurrentItem();
-});
+const tExIncorrectBtn = document.getElementById('t-ex-incorrect-btn');
+if (tExIncorrectBtn) {
+  tExIncorrectBtn.addEventListener('click', () => {
+    const item = exerciseQueue[currentExerciseIndex];
+    if (item && activeTableData) updateSpacedRepetitionRecord(activeTableData.id, item.id, false);
+    if (item && !retryQueue.includes(item)) retryQueue.push(item);
+    currentExerciseIndex++;
+    renderTableExerciseCurrentItem();
+  });
+}
 
 function updateSpacedRepetitionRecord(tableId, itemId, isCorrect) {
   const key = `sr_${tableId}_${itemId}`;
@@ -209,11 +248,18 @@ function updateSpacedRepetitionRecord(tableId, itemId, isCorrect) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
-document.getElementById('restart-table-ex-btn').addEventListener('click', () => openTableConfigModal(activeTableData));
-document.getElementById('exit-table-player-btn').addEventListener('click', () => {
-  document.getElementById('table-player-container').classList.add('hidden');
-  document.getElementById('view-mode-container').classList.remove('hidden');
-});
+const restartTableExBtn = document.getElementById('restart-table-ex-btn');
+if (restartTableExBtn) restartTableExBtn.addEventListener('click', () => openTableConfigModal(activeTableData));
+
+const exitTablePlayerBtn = document.getElementById('exit-table-player-btn');
+if (exitTablePlayerBtn) {
+  exitTablePlayerBtn.addEventListener('click', () => {
+    const tablePlayer = document.getElementById('table-player-container');
+    if (tablePlayer) tablePlayer.classList.add('hidden');
+    const viewMode = document.getElementById('view-mode-container');
+    if (viewMode) viewMode.classList.remove('hidden');
+  });
+}
 
 const btnNavTableReg = document.getElementById('btn-nav-table-register');
 if (btnNavTableReg) {
@@ -226,22 +272,24 @@ if (cancelTableRegBtn) {
 }
 
 function openTableRegisterForm(tableData = null) {
-  document.getElementById('view-mode-container').classList.add('hidden');
-  document.getElementById('collection-player-container').classList.add('hidden');
-  document.getElementById('table-player-container').classList.add('hidden');
-  document.getElementById('kanji-player-container').classList.add('hidden');
-  document.getElementById('refresh-mode-container').classList.add('hidden');
-  document.getElementById('timeline-register-form-container').classList.add('hidden');
-  document.getElementById('kanji-register-form-container').classList.add('hidden');
-  document.getElementById('table-register-form-container').classList.remove('hidden');
+  ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'timeline-register-form-container', 'kanji-register-form-container'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  const tableReg = document.getElementById('table-register-form-container');
+  if (tableReg) tableReg.classList.remove('hidden');
 
   const tableId = tableData ? tableData.id : `table_${Date.now()}`;
-  document.getElementById('editing-table-id').value = tableId;
-  document.getElementById('table-name-input').value = tableData ? tableData.title : '';
-  document.getElementById('table-subject-input').value = tableData ? (tableData.subject || "") : "";
+  const editingIdEl = document.getElementById('editing-table-id');
+  if (editingIdEl) editingIdEl.value = tableId;
+  const tableNameInput = document.getElementById('table-name-input');
+  if (tableNameInput) tableNameInput.value = tableData ? tableData.title : '';
+  const tableSubInput = document.getElementById('table-subject-input');
+  if (tableSubInput) tableSubInput.value = tableData ? (tableData.subject || "") : "";
   const descInput = document.getElementById('table-desc-input');
   if (descInput) descInput.value = tableData ? (tableData.description || "") : "";
-  document.getElementById('table-importances-input').value = tableData && tableData.importances ? tableData.importances.join(', ') : "高, 中, 低";
+  const impInput = document.getElementById('table-importances-input');
+  if (impInput) impInput.value = tableData && tableData.importances ? tableData.importances.join(', ') : "高, 中, 低";
   
   applyColumnWidths();
   initTableResizers();
@@ -252,8 +300,10 @@ function openTableRegisterForm(tableData = null) {
 
 function closeTableRegisterForm() {
   saveTableDocSilently();
-  document.getElementById('table-register-form-container').classList.add('hidden');
-  document.getElementById('view-mode-container').classList.remove('hidden');
+  const tableReg = document.getElementById('table-register-form-container');
+  if (tableReg) tableReg.classList.add('hidden');
+  const viewMode = document.getElementById('view-mode-container');
+  if (viewMode) viewMode.classList.remove('hidden');
 }
 
 function createEmptyRowItem() {
@@ -315,8 +365,10 @@ function appendRowToTable(item, index, importances) {
   });
 
   const handle = wrapper.querySelector('.drag-handle');
-  handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
-  handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
+  if (handle) {
+    handle.addEventListener('mousedown', () => wrapper.setAttribute('draggable', 'true'));
+    handle.addEventListener('mouseup', () => wrapper.removeAttribute('draggable'));
+  }
 
   wrapper.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', item.id);
@@ -345,9 +397,9 @@ function appendRowToTable(item, index, importances) {
     }
   });
 
-  wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.imgData, 'question'));
-  wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.choiceImgData, 'choice'));
-  wrapper.querySelector('.row-del-btn').addEventListener('click', () => { 
+  wrapper.querySelector('.row-img-btn')?.addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.imgData, 'question'));
+  wrapper.querySelector('.row-choice-img-btn')?.addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.choiceImgData, 'choice'));
+  wrapper.querySelector('.row-del-btn')?.addEventListener('click', () => { 
     wrapper.remove(); 
     reindexTableRows(); 
     saveTableDocSilently();
@@ -360,13 +412,13 @@ function saveTableDocSilently() {
   if (!currentUser) return;
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(async () => {
-    const tableId = document.getElementById('editing-table-id').value;
+    const tableId = document.getElementById('editing-table-id')?.value;
     if (!tableId) return;
-    const title = document.getElementById('table-name-input').value.trim() || "無題の一問一答";
-    const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
-    const description = document.getElementById('table-desc-input').value.trim() || "";
+    const title = document.getElementById('table-name-input')?.value.trim() || "無題の一問一答";
+    const subject = document.getElementById('table-subject-input')?.value.trim() || "未設定";
+    const description = document.getElementById('table-desc-input')?.value.trim() || "";
 
-    const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
+    const importances = document.getElementById('table-importances-input')?.value.split(',').map(s => s.trim()).filter(Boolean) || ["高", "中", "低"];
     const items = [];
     document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
       const uInput = tr.querySelector('.row-unit');
@@ -497,18 +549,29 @@ if (resetColWidthBtn) {
 function openQaImageModal(rowId, imgData, type = 'question') {
   activeModalRowId = rowId;
   activeModalType = type;
-  document.getElementById('modal-target-row-id').value = rowId;
-  document.getElementById('modal-target-type').value = type;
-  document.getElementById('qa-modal-title').innerText = type === 'choice' ? "選択肢画像の添付" : "問題画像の添付";
+  const targetRowIdEl = document.getElementById('modal-target-row-id');
+  if (targetRowIdEl) targetRowIdEl.value = rowId;
+  const targetTypeEl = document.getElementById('modal-target-type');
+  if (targetTypeEl) targetTypeEl.value = type;
+  const modalTitle = document.getElementById('qa-modal-title');
+  if (modalTitle) modalTitle.innerText = type === 'choice' ? "選択肢画像の添付" : "問題画像の添付";
   
   const preview = document.getElementById('qa-modal-img-preview');
-  if (imgData) preview.innerHTML = `<img src="${imgData}" class="max-h-32 mx-auto rounded"/>`;
-  else preview.innerHTML = `<span class="text-gray-400 text-xs">画像未選択</span>`;
-  document.getElementById('qa-image-modal').classList.remove('hidden');
+  if (preview) {
+    if (imgData) preview.innerHTML = `<img src="${imgData}" class="max-h-32 mx-auto rounded"/>`;
+    else preview.innerHTML = `<span class="text-gray-400 text-xs">画像未選択</span>`;
+  }
+  const modal = document.getElementById('qa-image-modal');
+  if (modal) modal.classList.remove('hidden');
 }
 
 const closeQaImgModal = document.getElementById('close-qa-img-modal');
-if (closeQaImgModal) closeQaImgModal.addEventListener('click', () => document.getElementById('qa-image-modal').classList.add('hidden'));
+if (closeQaImgModal) {
+  closeQaImgModal.addEventListener('click', () => {
+    const modal = document.getElementById('qa-image-modal');
+    if (modal) modal.classList.add('hidden');
+  });
+}
 
 const qaImgRemoveBtn = document.getElementById('qa-img-remove-btn');
 if (qaImgRemoveBtn) {
@@ -526,7 +589,8 @@ if (qaImgRemoveBtn) {
       }
       saveTableDocSilently();
     }
-    document.getElementById('qa-image-modal').classList.add('hidden');
+    const modal = document.getElementById('qa-image-modal');
+    if (modal) modal.classList.add('hidden');
   });
 }
 
@@ -538,7 +602,8 @@ if (qaModalFileInput) {
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       const base64 = uploadEvent.target.result;
-      document.getElementById('qa-modal-img-preview').innerHTML = `<img src="${base64}" class="max-h-32 mx-auto rounded"/>`;
+      const preview = document.getElementById('qa-modal-img-preview');
+      if (preview) preview.innerHTML = `<img src="${base64}" class="max-h-32 mx-auto rounded"/>`;
       const tr = document.querySelector(`tr[data-item-id="${activeModalRowId}"]`);
       if (tr) {
         if (activeModalType === 'choice') tr.dataset.choiceImgData = base64;
@@ -572,6 +637,7 @@ if (qaImgSaveBtn) {
       }
       saveTableDocSilently();
     }
-    document.getElementById('qa-image-modal').classList.add('hidden');
+    const modal = document.getElementById('qa-image-modal');
+    if (modal) modal.classList.add('hidden');
   });
 }
