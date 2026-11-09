@@ -64,58 +64,52 @@ if (toggleSidebarBtn && sidebar) {
   toggleSidebarBtn.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
 }
 
-// 💡 編集画面が開いているかチェックして確認アラートを出す共通関数
-function confirmLeaveEditorIfOpen() {
-  const isTableRegOpen = !document.getElementById('table-register-form-container').classList.contains('hidden');
-  const isKanjiRegOpen = !document.getElementById('kanji-register-form-container').classList.contains('hidden');
-  const isTimelineRegOpen = !document.getElementById('timeline-register-form-container').classList.contains('hidden');
-
-  if (isTableRegOpen || isKanjiRegOpen || isTimelineRegOpen) {
-    return confirm("⚠️ 編集中の内容が保存されていません。保存せずに移動しますか？\n（「OK」で移動、「キャンセル」で編集を続行）");
+function closeAllEditorsAndSync() {
+  const saveBtn = document.getElementById('save-table-doc-btn');
+  if (saveBtn && !document.getElementById('table-register-form-container').classList.contains('hidden')) {
+    saveBtn.click();
   }
-  return true;
-}
+  const kanjiSaveBtn = document.getElementById('save-kanji-doc-btn');
+  if (kanjiSaveBtn && !document.getElementById('kanji-register-form-container').classList.contains('hidden')) {
+    kanjiSaveBtn.click();
+  }
+  const timelineSaveBtn = document.getElementById('save-timeline-doc-btn');
+  if (timelineSaveBtn && !document.getElementById('timeline-register-form-container').classList.contains('hidden')) {
+    timelineSaveBtn.click();
+  }
 
-// エディタ画面を強制的に閉じるヘルパー
-function closeAllEditors() {
   document.getElementById('table-register-form-container').classList.add('hidden');
   document.getElementById('kanji-register-form-container').classList.add('hidden');
   document.getElementById('timeline-register-form-container').classList.add('hidden');
 }
 
 document.getElementById('nav-docs').addEventListener('click', () => {
-  if (!confirmLeaveEditorIfOpen()) return;
-  closeAllEditors();
+  closeAllEditorsAndSync();
   currentMainView = 'documents'; isPlayingCollection = false; setActiveNavTab('nav-docs'); renderCurrentView(); clearDocumentView(); 
 });
 
 document.getElementById('nav-collections').addEventListener('click', () => {
-  if (!confirmLeaveEditorIfOpen()) return;
-  closeAllEditors();
+  closeAllEditorsAndSync();
   currentMainView = 'collections'; isPlayingCollection = false; setActiveNavTab('nav-collections'); renderCurrentView(); 
 });
 
 document.getElementById('nav-tables').addEventListener('click', () => {
-  if (!confirmLeaveEditorIfOpen()) return;
-  closeAllEditors();
+  closeAllEditorsAndSync();
   currentMainView = 'tables'; isPlayingCollection = false; setActiveNavTab('nav-tables'); renderCurrentView(); 
 });
 
 document.getElementById('nav-kanji').addEventListener('click', () => {
-  if (!confirmLeaveEditorIfOpen()) return;
-  closeAllEditors();
+  closeAllEditorsAndSync();
   currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); 
 });
 
 document.getElementById('nav-timeline').addEventListener('click', () => {
-  if (!confirmLeaveEditorIfOpen()) return;
-  closeAllEditors();
+  closeAllEditorsAndSync();
   currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); 
 });
 
 document.getElementById('nav-refresh').addEventListener('click', () => {
-  if (!confirmLeaveEditorIfOpen()) return;
-  closeAllEditors();
+  closeAllEditorsAndSync();
   isPlayingCollection = false;
   openRefreshModeModal({
     documents: allDocuments,
@@ -277,8 +271,7 @@ function renderDocumentList(docs) {
     
     item.addEventListener('click', (e) => {
       if (e.target.classList.contains('del-btn') || e.target.classList.contains('edit-btn')) return;
-      if (!confirmLeaveEditorIfOpen()) return;
-      closeAllEditors();
+      closeAllEditorsAndSync();
       if (isPlayingCollection) {
         const idx = collectionPlayList.findIndex(d => d.id === data.id);
         if (idx !== -1) { collectionPlayIndex = idx; renderCollectionPlayerCurrent(); }
@@ -328,7 +321,7 @@ function updateUnitFilterUI(docs) {
 }
 
 document.getElementById('create-collection-btn').addEventListener('click', () => {
-  if (!confirmLeaveEditorIfOpen()) return;
+  closeAllEditorsAndSync();
   openCollectionEditModal(null);
 });
 
@@ -353,13 +346,12 @@ function renderCollectionList(collections) {
     `;
     item.querySelector('.play-coll-btn').addEventListener('click', (e) => { 
       e.stopPropagation(); 
-      if (!confirmLeaveEditorIfOpen()) return;
-      closeAllEditors();
+      closeAllEditorsAndSync();
       startCollectionPlay(c); 
     });
     item.querySelector('.edit-coll').addEventListener('click', (e) => { 
       e.stopPropagation(); 
-      if (!confirmLeaveEditorIfOpen()) return;
+      closeAllEditorsAndSync();
       openCollectionEditModal(c); 
     });
     
@@ -406,7 +398,6 @@ document.getElementById('save-coll-modal-btn').addEventListener('click', async (
   const collId = editingId ? editingId : `coll_${Date.now()}`;
 
   await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, description, documentIds, updatedAt: Date.now(), isDeleted: false }, { merge: true });
-  alert("問題集を保存しました！");
   document.getElementById('collection-edit-modal').classList.add('hidden');
 });
 
@@ -522,7 +513,6 @@ document.getElementById('btn-record-commit').addEventListener('click', async () 
   const i = parseInt(document.getElementById('stat-incorrect-input').value) || 0;
   currentDocData.stats = { correct: c, incorrect: i };
   await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: currentDocData.stats }, { merge: true });
-  alert("正誤記録を保存しました！");
   document.getElementById('stats-modal').classList.add('hidden');
 });
 
