@@ -55,3 +55,10 @@ aside.collapsed {
   font-family: "Hiragino Sans", "Meiryo", sans-serif;
   line-height: 2.2;
 }
+
+/* 複数選択肢選んだ時のスタイル補助 */
+.choice-option-btn.selected-choice {
+  background-color: #eff6ff !important;
+  border-color: #3b82f6 !important;
+  border-width: 2px !important;
+}
