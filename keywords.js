@@ -4,7 +4,7 @@ import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 let activeTableData = null;
 let exerciseQueue = [], retryQueue = [], currentExerciseIndex = 0, exerciseTotalCount = 0, isRetryLoop = false;
 let activeModalRowId = null, activeModalType = 'question';
-export let hiddenUnits = new Set(); // 👈 未定義エラーを防ぐために追加
+export let hiddenUnits = new Set();
 
 const DEFAULT_COL_WIDTHS = {
   drag: "36px",
@@ -263,17 +263,12 @@ if (exitTablePlayerBtn) {
   });
 }
 
-const btnNavTableReg = document.getElementById('btn-nav-table-register');
-if (btnNavTableReg) {
-  btnNavTableReg.addEventListener('click', () => openTableRegisterForm(null));
-}
-
 const cancelTableRegBtn = document.getElementById('cancel-table-register-btn');
 if (cancelTableRegBtn) {
   cancelTableRegBtn.addEventListener('click', closeTableRegisterForm);
 }
 
-function openTableRegisterForm(tableData = null) {
+export function openTableRegisterForm(tableData = null) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'timeline-register-form-container', 'kanji-register-form-container'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
