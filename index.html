@@ -5,16 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mondai Choco - 学習アプリ</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* スクロールバーやカスタム調整用 */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-    .resizer {
-      position: absolute; right: 0; top: 0; bottom: 0; width: 5px;
-      cursor: col-resize; user-select: none; touch-action: none;
-    }
-    .resizer:hover, .resizer.resizing { background: #3b82f6; }
-  </style>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body class="bg-slate-100 text-slate-800 h-screen flex flex-col overflow-hidden font-sans">
 
@@ -51,9 +42,11 @@
       </div>
 
       <!-- サブメニュー (新規作成・一括復旧など) -->
-      <div class="p-2 border-b bg-slate-50/50 flex gap-2 text-xs">
-        <button id="nav-quick-doc-add" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold py-1 px-2 rounded border border-blue-200 transition">+ 短問追加</button>
-        <button id="btn-nav-table-register" class="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold py-1 px-2 rounded border border-emerald-200 transition">+ 一問一答</button>
+      <div class="p-2 border-b bg-slate-50/50 flex flex-wrap gap-1.5 text-xs">
+        <button id="nav-quick-doc-add" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold py-1 px-1.5 rounded border border-blue-200 transition text-[10px]">+ 短問</button>
+        <button id="btn-nav-table-register" class="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold py-1 px-1.5 rounded border border-emerald-200 transition text-[10px]">+ 一問一答</button>
+        <button id="btn-nav-kanji-register" class="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold py-1 px-1.5 rounded border border-amber-200 transition text-[10px]">+ 漢字</button>
+        <button id="btn-nav-timeline-register" class="flex-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold py-1 px-1.5 rounded border border-purple-200 transition text-[10px]">+ 年表</button>
         <button id="create-collection-btn" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1 px-2 rounded border transition" title="問題集作成">📁</button>
         <button id="nav-refresh" class="bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold py-1 px-2 rounded border border-amber-200 transition" title="リフレッシュモード">🔄</button>
       </div>
@@ -141,7 +134,75 @@
         </div>
       </div>
 
-      <!-- 3. 一問一答 プレイヤー画面 -->
+      <!-- 3. 漢字 登録・編集エディタ画面 -->
+      <div id="kanji-register-form-container" class="hidden absolute inset-0 bg-white z-20 flex flex-col overflow-hidden">
+        <div class="p-3 border-b bg-slate-50 flex justify-between items-center shrink-0">
+          <div class="flex items-center gap-3">
+            <h2 class="font-bold text-sm text-amber-800">漢字問題エディタ</h2>
+            <input type="hidden" id="editing-kanji-id"/>
+            <input type="text" id="kanji-name-input" placeholder="タイトル (例: 第1章 漢字)" class="border rounded px-2 py-1 text-xs w-60 font-bold"/>
+            <input type="text" id="kanji-subject-input" placeholder="教科" class="border rounded px-2 py-1 text-xs w-28"/>
+            <input type="text" id="kanji-desc-input" placeholder="説明・備考" class="border rounded px-2 py-1 text-xs w-48"/>
+          </div>
+          <div class="flex gap-2">
+            <button id="save-kanji-doc-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-xs">保存する</button>
+            <button id="cancel-kanji-register-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-1.5 rounded text-xs font-bold transition">完了・一覧へ</button>
+          </div>
+        </div>
+        <div class="flex-1 overflow-auto p-4">
+          <table class="w-full border-collapse text-xs bg-white shadow-xs rounded">
+            <thead>
+              <tr class="bg-amber-100 text-amber-900 border-b">
+                <th class="p-2 text-center w-10">並替</th>
+                <th class="p-2 text-center w-10">#</th>
+                <th class="p-2 w-32">単元名</th>
+                <th class="p-2">文章全体</th>
+                <th class="p-2 w-36">傍線部(漢字)</th>
+                <th class="p-2 w-36">読み仮名</th>
+                <th class="p-2 w-28 text-center">出題形式</th>
+                <th class="p-2 text-center w-16">削除</th>
+              </tr>
+            </thead>
+            <tbody id="kanji-table-tbody"></tbody>
+          </table>
+          <button id="add-kanji-row-btn" class="mt-3 w-full py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 rounded font-bold text-xs transition">+ 文章問題を追加</button>
+        </div>
+      </div>
+
+      <!-- 4. 年表 登録・編集エディタ画面 -->
+      <div id="timeline-register-form-container" class="hidden absolute inset-0 bg-white z-20 flex flex-col overflow-hidden">
+        <div class="p-3 border-b bg-slate-50 flex justify-between items-center shrink-0">
+          <div class="flex items-center gap-3">
+            <h2 class="font-bold text-sm text-purple-800">年表エディタ</h2>
+            <input type="hidden" id="editing-timeline-id"/>
+            <input type="text" id="timeline-name-input" placeholder="タイトル (例: 日本史年表)" class="border rounded px-2 py-1 text-xs w-60 font-bold"/>
+            <input type="text" id="timeline-subject-input" placeholder="教科" class="border rounded px-2 py-1 text-xs w-28"/>
+          </div>
+          <div class="flex gap-2">
+            <button id="save-timeline-doc-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-xs">保存する</button>
+            <button id="cancel-timeline-register-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-1.5 rounded text-xs font-bold transition">完了・一覧へ</button>
+          </div>
+        </div>
+        <div class="flex-1 overflow-auto p-4">
+          <table class="w-full border-collapse text-xs bg-white shadow-xs rounded">
+            <thead>
+              <tr class="bg-purple-100 text-purple-900 border-b">
+                <th class="p-2 text-center w-10">並替</th>
+                <th class="p-2 text-center w-10">#</th>
+                <th class="p-2 w-32">年 (西暦/和暦年数)</th>
+                <th class="p-2 w-20 text-center">月</th>
+                <th class="p-2 w-20 text-center">日</th>
+                <th class="p-2">出来事の内容</th>
+                <th class="p-2 text-center w-16">削除</th>
+              </tr>
+            </thead>
+            <tbody id="timeline-table-tbody"></tbody>
+          </table>
+          <button id="add-timeline-row-btn" class="mt-3 w-full py-2 bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-800 rounded font-bold text-xs transition">+ 年表項目を追加</button>
+        </div>
+      </div>
+
+      <!-- 5. 一問一答 プレイヤー画面 -->
       <div id="table-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-6">
         <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
           <div class="p-4 border-b flex justify-between items-center bg-emerald-50">
@@ -189,7 +250,44 @@
         </div>
       </div>
 
-      <!-- 4. 問題集プレイ画面 -->
+      <!-- 6. 漢字 プレイヤー画面 -->
+      <div id="kanji-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-6">
+        <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
+          <div class="p-4 border-b flex justify-between items-center bg-amber-50">
+            <div>
+              <span id="kanji-item-unit-badge" class="px-2 py-0.5 bg-amber-200 text-amber-900 rounded font-bold text-[10px] mr-2">単元</span>
+              <span id="kanji-loop-badge" class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">通常周回</span>
+            </div>
+            <div id="kanji-progress-count" class="font-bold text-xs text-amber-900">文章 1 / 5</div>
+            <button id="exit-kanji-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs">✕ 終了</button>
+          </div>
+
+          <div id="kanji-exercise-content" class="flex-1 p-6 overflow-y-auto space-y-4">
+            <div id="kanji-ex-passage"></div>
+            
+            <div id="kanji-ex-answer-area" class="hidden space-y-3 pt-4 border-t">
+              <div class="p-3 bg-amber-50 rounded-lg border border-amber-200 space-y-2">
+                <span class="text-xs font-bold text-amber-800 block">解答確認・自己採点：</span>
+                <div id="kanji-sub-items-container" class="space-y-2"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 完了結果画面 -->
+          <div id="kanji-exercise-result" class="hidden flex-1 p-8 flex flex-col items-center justify-center text-center space-y-4">
+            <div class="text-4xl">🎉</div>
+            <h3 class="font-bold text-lg text-slate-800">漢字演習お疲れ様でした！</h3>
+            <p id="kanji-result-summary" class="text-xs text-slate-600"></p>
+            <button id="restart-kanji-ex-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-lg font-bold text-xs shadow-xs transition">もう一度演習する</button>
+          </div>
+
+          <div class="p-4 border-t bg-white flex justify-between items-center">
+            <button id="kanji-ex-show-ans-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-lg text-xs font-bold transition shadow-xs">解答を表示</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. 問題集プレイ画面 -->
       <div id="collection-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-6">
         <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
           <div class="p-4 border-b flex justify-between items-center bg-blue-50">
@@ -254,7 +352,42 @@
     </div>
   </div>
 
-  <!-- 2. 画像アップロード用モーダル -->
+  <!-- 2. 漢字 演習設定モーダル -->
+  <div id="kanji-config-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 w-full max-w-sm space-y-4 shadow-xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-sm text-amber-800">漢字 演習設定</h3>
+        <button id="close-kanji-config-modal" class="text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="font-bold text-slate-600 block mb-1">出題順序</label>
+          <select id="kanji-config-order-select" class="w-full border rounded p-2 bg-white">
+            <option value="normal">登録順</option>
+            <option value="random">ランダム</option>
+          </select>
+        </div>
+        <div>
+          <label class="font-bold text-slate-600 block mb-1">出題範囲</label>
+          <select id="kanji-config-scope-select" class="w-full border rounded p-2 bg-white">
+            <option value="all">すべての問題</option>
+            <option value="mistaken">前回間違えた問題のみ</option>
+          </select>
+        </div>
+        <div>
+          <label class="font-bold text-slate-600 block mb-1">出題形式絞り込み</label>
+          <select id="kanji-config-dir-select" class="w-full border rounded p-2 bg-white">
+            <option value="all">すべて (読み・書き)</option>
+            <option value="読み">読み のみ</option>
+            <option value="書き">書き のみ</option>
+          </select>
+        </div>
+      </div>
+      <button id="start-kanji-exercise-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-xs">漢字演習スタート ✍️</button>
+    </div>
+  </div>
+
+  <!-- 3. 画像アップロード用モーダル -->
   <div id="qa-image-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 w-full max-w-sm space-y-4 shadow-xl">
       <div class="flex justify-between items-center border-b pb-2">
@@ -272,7 +405,7 @@
     </div>
   </div>
 
-  <!-- 3. 問題集編集モーダル -->
+  <!-- 4. 問題集編集モーダル -->
   <div id="collection-edit-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 w-full max-w-md space-y-4 shadow-xl max-h-[90vh] flex flex-col">
       <div class="flex justify-between items-center border-b pb-2 shrink-0">
@@ -290,7 +423,7 @@
     </div>
   </div>
 
-  <!-- 4. クイック短問追加モーダル -->
+  <!-- 5. クイック短問追加モーダル -->
   <div id="quick-doc-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 w-full max-w-md space-y-4 shadow-xl">
       <div class="flex justify-between items-center border-b pb-2">
@@ -317,7 +450,7 @@
     </div>
   </div>
 
-  <!-- 5. 統計・正誤記録モーダル -->
+  <!-- 6. 統計・正誤記録モーダル -->
   <div id="stats-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 w-full max-w-sm space-y-4 shadow-xl">
       <div class="flex justify-between items-center border-b pb-2">
@@ -329,7 +462,7 @@
     </div>
   </div>
 
-  <!-- 6. ゴミ箱モーダル -->
+  <!-- 7. ゴミ箱モーダル -->
   <div id="trash-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 w-full max-w-lg space-y-4 shadow-xl max-h-[80vh] flex flex-col">
       <div class="flex justify-between items-center border-b pb-2 shrink-0">
