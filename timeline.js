@@ -51,19 +51,21 @@ if (cancelTimelineRegBtn) {
 }
 
 function openTimelineRegisterForm(timelineData = null) {
-  document.getElementById('view-mode-container').classList.add('hidden');
-  document.getElementById('collection-player-container').classList.add('hidden');
-  document.getElementById('table-player-container').classList.add('hidden');
-  document.getElementById('kanji-player-container').classList.add('hidden');
-  document.getElementById('refresh-mode-container').classList.add('hidden');
-  document.getElementById('register-form-container').classList.add('hidden');
-  document.getElementById('table-register-form-container').classList.add('hidden');
-  document.getElementById('kanji-register-form-container').classList.add('hidden');
-  document.getElementById('timeline-register-form-container').classList.remove('hidden');
+  // 修正: 存在しない 'register-form-container' を削除し、他のファイルと合わせた安全な一括非表示処理に変更
+  ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'table-register-form-container', 'kanji-register-form-container', 'timeline-register-form-container'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
 
-  document.getElementById('editing-timeline-id').value = timelineData ? timelineData.id : '';
-  document.getElementById('timeline-name-input').value = timelineData ? timelineData.title : '';
-  document.getElementById('timeline-subject-input').value = timelineData ? (timelineData.subject || "") : "";
+  const timelineRegContainer = document.getElementById('timeline-register-form-container');
+  if (timelineRegContainer) timelineRegContainer.classList.remove('hidden');
+
+  const editingTimelineId = document.getElementById('editing-timeline-id');
+  if (editingTimelineId) editingTimelineId.value = timelineData ? timelineData.id : '';
+  const timelineNameInput = document.getElementById('timeline-name-input');
+  if (timelineNameInput) timelineNameInput.value = timelineData ? timelineData.title : '';
+  const timelineSubjectInput = document.getElementById('timeline-subject-input');
+  if (timelineSubjectInput) timelineSubjectInput.value = timelineData ? (timelineData.subject || "") : "";
   
   let items = timelineData ? timelineData.items || [] : [createEmptyTimelineItem()];
   sortTimelineItems(items);
@@ -71,8 +73,10 @@ function openTimelineRegisterForm(timelineData = null) {
 }
 
 function closeTimelineRegisterForm() {
-  document.getElementById('timeline-register-form-container').classList.add('hidden');
-  document.getElementById('view-mode-container').classList.remove('hidden');
+  const timelineRegContainer = document.getElementById('timeline-register-form-container');
+  if (timelineRegContainer) timelineRegContainer.classList.add('hidden');
+  const viewModeContainer = document.getElementById('view-mode-container');
+  if (viewModeContainer) viewModeContainer.classList.remove('hidden');
 }
 
 function createEmptyTimelineItem() {
@@ -123,8 +127,10 @@ function renderTimelineRows(items) {
     `;
 
     const handle = tr.querySelector('.drag-handle');
-    handle.addEventListener('mousedown', () => tr.setAttribute('draggable', 'true'));
-    handle.addEventListener('mouseup', () => tr.removeAttribute('draggable'));
+    if (handle) {
+      handle.addEventListener('mousedown', () => tr.setAttribute('draggable', 'true'));
+      handle.addEventListener('mouseup', () => tr.removeAttribute('draggable'));
+    }
     tr.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', item.id);
       tr.classList.add('opacity-40');
@@ -205,14 +211,18 @@ const saveTimelineDocBtn = document.getElementById('save-timeline-doc-btn');
 if (saveTimelineDocBtn) {
   saveTimelineDocBtn.addEventListener('click', async () => {
     if (!currentUser) return;
-    const title = document.getElementById('timeline-name-input').value.trim();
+    const titleInput = document.getElementById('timeline-name-input');
+    const title = titleInput ? titleInput.value.trim() : "";
     if (!title) { alert("年表のタイトルを入力してください。"); return; }
-    const subject = document.getElementById('timeline-subject-input').value.trim() || "未設定";
+    const subjectInput = document.getElementById('timeline-subject-input');
+    const subject = subjectInput ? subjectInput.value.trim() : "未設定";
 
     const items = collectCurrentTimelineItems();
     if (items.length === 0) { alert("少なくとも1つ以上の年表項目を入力してください。"); return; }
 
-    const timelineId = document.getElementById('editing-timeline-id').value || `timeline_${Date.now()}`;
+    const editingTimelineIdEl = document.getElementById('editing-timeline-id');
+    const timelineId = editingTimelineIdEl && editingTimelineIdEl.value ? editingTimelineIdEl.value : `timeline_${Date.now()}`;
+    
     await setDoc(doc(db, "users", currentUser.uid, "timelineTables", timelineId), { title, subject, items, updatedAt: Date.now() }, { merge: true });
     alert("年表を保存しました！"); 
     closeTimelineRegisterForm();
