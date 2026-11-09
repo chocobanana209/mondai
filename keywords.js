@@ -4,6 +4,7 @@ import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 let activeTableData = null;
 let exerciseQueue = [], retryQueue = [], currentExerciseIndex = 0, exerciseTotalCount = 0, isRetryLoop = false;
 let activeModalRowId = null, activeModalType = 'question';
+export let hiddenUnits = new Set(); // 👈 未定義エラーを防ぐために追加
 
 const DEFAULT_COL_WIDTHS = {
   drag: "36px",
@@ -19,7 +20,8 @@ const DEFAULT_COL_WIDTHS = {
   action: "42px"
 };
 
-export function renderTableList(tables, hiddenUnits) {
+export function renderTableList(tables, passedHiddenUnits) {
+  if (passedHiddenUnits) hiddenUnits = passedHiddenUnits;
   const container = document.getElementById('sidebar-list'); if (!container) return;
   const activeTables = tables.filter(t => !t.isDeleted);
   container.innerHTML = activeTables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
