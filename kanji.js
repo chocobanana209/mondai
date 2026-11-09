@@ -3,8 +3,10 @@ import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 
 let activeKanjiData = null;
 let kanjiExerciseQueue = [], kanjiRetryQueue = [], currentKanjiIndex = 0, kanjiTotalCount = 0, isKanjiRetryLoop = false;
+export let hiddenUnits = new Set(); // 👈 未定義エラーを防ぐために追加
 
-export function renderKanjiTableList(tables, hiddenUnits) {
+export function renderKanjiTableList(tables, passedHiddenUnits) {
+  if (passedHiddenUnits) hiddenUnits = passedHiddenUnits;
   const container = document.getElementById('sidebar-list'); if (!container) return;
   const activeTables = tables.filter(t => !t.isDeleted);
   container.innerHTML = activeTables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">漢字問題表がありません。</p>' : '';
