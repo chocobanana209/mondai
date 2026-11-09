@@ -3,7 +3,7 @@ import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 
 let activeKanjiData = null;
 let kanjiExerciseQueue = [], kanjiRetryQueue = [], currentKanjiIndex = 0, kanjiTotalCount = 0, isKanjiRetryLoop = false;
-export let hiddenUnits = new Set(); // 👈 未定義エラーを防ぐために追加
+export let hiddenUnits = new Set();
 
 export function renderKanjiTableList(tables, passedHiddenUnits) {
   if (passedHiddenUnits) hiddenUnits = passedHiddenUnits;
@@ -37,17 +37,12 @@ export function renderKanjiTableList(tables, passedHiddenUnits) {
   });
 }
 
-const btnNavKanjiReg = document.getElementById('btn-nav-kanji-register');
-if (btnNavKanjiReg) {
-  btnNavKanjiReg.addEventListener('click', () => openKanjiRegisterForm(null));
-}
-
 const cancelKanjiRegBtn = document.getElementById('cancel-kanji-register-btn');
 if (cancelKanjiRegBtn) {
   cancelKanjiRegBtn.addEventListener('click', closeKanjiRegisterForm);
 }
 
-function openKanjiRegisterForm(kanjiData = null) {
+export function openKanjiRegisterForm(kanjiData = null) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'timeline-register-form-container', 'table-register-form-container'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
