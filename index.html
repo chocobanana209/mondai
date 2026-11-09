@@ -28,10 +28,10 @@
   </header>
 
   <!-- メインレイアウト -->
-  <div id="main-content" class="flex-1 flex overflow-hidden opacity-50 pointer-events-none transition-opacity">
+  <div id="main-content" class="flex-1 flex relative overflow-hidden opacity-50 pointer-events-none transition-opacity">
     
     <!-- サイドバー -->
-    <aside id="sidebar" class="w-80 bg-white border-r flex flex-col shrink-0 transition-all duration-200">
+    <aside id="sidebar" class="w-80 max-w-full bg-white border-r flex flex-col shrink-0 transition-all duration-200 absolute md:relative inset-y-0 left-0 z-30 md:z-auto shadow-lg md:shadow-none">
       <!-- ナビゲーションタブ -->
       <div class="p-2 border-b bg-slate-50 flex gap-1">
         <button id="nav-docs" class="flex-1 py-1 font-bold text-blue-600 bg-white rounded shadow-sm text-[11px]">問題</button>
@@ -68,7 +68,7 @@
     </aside>
 
     <!-- コンテンツ表示エリア -->
-    <main class="flex-1 bg-slate-50 flex flex-col overflow-hidden relative">
+    <main class="flex-1 bg-slate-50 flex flex-col overflow-hidden relative w-full">
 
       <!-- 1. 通常閲覧・演習モードコンテナ -->
       <div id="view-mode-container" class="flex-1 flex flex-col overflow-hidden p-4">
@@ -239,7 +239,6 @@
             <button id="restart-table-ex-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg font-bold text-xs shadow-xs transition">もう一度演習する</button>
           </div>
 
-          <!-- 最適化されたボタン領域（画面一番下・左右いっぱい） -->
           <div class="p-4 border-t bg-white shrink-0">
             <button id="t-ex-show-ans-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">解答を表示</button>
             <div id="t-ex-grade-buttons" class="hidden flex gap-3 w-full">
@@ -447,6 +446,7 @@
         </div>
       </div>
       <button id="save-quick-doc-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-xs">追加する</button>
+修正するモーダル追加する</button>
     </div>
   </div>
 
