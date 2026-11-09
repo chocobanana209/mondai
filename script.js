@@ -24,8 +24,26 @@ try {
 
 onAuthStateChanged(auth, async (user) => {
   currentUser = user; updateAuthUI(user);
-  if (user) { await user.getIdToken(true); setupRealtimeListeners(); } else { detachRealtimeListeners(); clearDocumentView(); }
+  if (user) { 
+    await user.getIdToken(true); 
+    setupRealtimeListeners(); 
+    checkAndHandleSidebarOnLoad();
+  } else { 
+    detachRealtimeListeners(); 
+    clearDocumentView(); 
+  }
 });
+
+function checkAndHandleSidebarOnLoad() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  // 横幅の半分以上を占領するか判定 (例: 画面幅 < サイドバーの通常幅80px * 2 = 640px 以下などの狭い画面)
+  if (window.innerWidth < 768) {
+    if (!selectedDocId && !isPlayingCollection) {
+      sidebar.classList.remove('collapsed');
+    }
+  }
+}
 
 function updateAuthUI(user) {
   const authStatus = document.getElementById('auth-status');
@@ -70,7 +88,7 @@ if (toggleSidebarBtn && sidebar) {
   toggleSidebarBtn.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
 }
 
-function closeAllEditorsAndSync() {
+export function closeAllEditorsAndSync() {
   const saveBtn = document.getElementById('save-table-doc-btn');
   if (saveBtn && document.getElementById('table-register-form-container') && !document.getElementById('table-register-form-container').classList.contains('hidden')) {
     saveBtn.click();
@@ -88,9 +106,13 @@ function closeAllEditorsAndSync() {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
+
+  // 保存完了等でコンテンツ表示がなくなればサイドバーを開く（スマホなど狭い画面の場合）
+  if (window.innerWidth < 768 && sidebar) {
+    sidebar.classList.remove('collapsed');
+  }
 }
 
-// サイドバー上部の「新しく追加」ボタンの共通ハンドラ
 safeListen('sidebar-add-btn', 'click', () => {
   closeAllEditorsAndSync();
   if (currentMainView === 'documents') {
@@ -483,6 +505,13 @@ function startCollectionPlay(collData) {
   if (titleEl) titleEl.innerText = collData.name;
   const descEl = document.getElementById('collection-player-desc');
   if (descEl) descEl.innerText = collData.description || '';
+  
+  // 狭い画面ではコンテンツ表示時にサイドバーを自動でたたむ
+  if (window.innerWidth < 768) {
+    const sb = document.getElementById('sidebar');
+    if (sb) sb.classList.add('collapsed');
+  }
+
   renderCollectionPlayerCurrent();
 }
 
@@ -523,6 +552,11 @@ safeListen('exit-collection-btn', 'click', () => {
   const viewMode = document.getElementById('view-mode-container');
   if (viewMode) viewMode.classList.remove('hidden');
   clearDocumentView();
+  
+  if (window.innerWidth < 768) {
+    const sb = document.getElementById('sidebar');
+    if (sb) sb.classList.remove('collapsed');
+  }
 });
 
 const answerPane = document.getElementById('answer-pane');
@@ -621,6 +655,12 @@ function selectDocument(docData) {
   if (toggleAnswerBtn) {
     toggleAnswerBtn.classList.remove('hidden');
     toggleAnswerBtn.innerText = "💡 解答解説を表示";
+  }
+
+  // 狭い画面ではコンテンツ選択時にサイドバーを自動でたたむ
+  if (window.innerWidth < 768) {
+    const sb = document.getElementById('sidebar');
+    if (sb) sb.classList.add('collapsed');
   }
 }
 
