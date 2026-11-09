@@ -9,11 +9,10 @@ const DEFAULT_COL_WIDTHS = {
   drag: "36px",
   index: "36px",
   unit: "16%",
-  question: "30%",
+  question: "32%",
   qimg: "42px",
   answer: "16%",
-  choice: "52px",
-  wrong: "12%",
+  wrong: "16%",
   cimg: "42px",
   imp: "70px",
   exp: "16%",
@@ -128,7 +127,9 @@ function renderTableExerciseCurrentItem() {
   }
 
   const choicesArea = document.getElementById('t-ex-choices-area');
-  if (item.isChoiceMode && item.wrongChoices) {
+  const hasWrongChoices = item.wrongChoices && item.wrongChoices.trim().length > 0;
+
+  if (hasWrongChoices) {
     choicesArea.classList.remove('hidden');
     choicesArea.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-1">選択肢：</div>`;
     
@@ -234,7 +235,8 @@ function openTableRegisterForm(tableData = null) {
   document.getElementById('kanji-register-form-container').classList.add('hidden');
   document.getElementById('table-register-form-container').classList.remove('hidden');
 
-  document.getElementById('editing-table-id').value = tableData ? tableData.id : '';
+  const tableId = tableData ? tableData.id : `table_${Date.now()}`;
+  document.getElementById('editing-table-id').value = tableId;
   document.getElementById('table-name-input').value = tableData ? tableData.title : '';
   document.getElementById('table-subject-input').value = tableData ? (tableData.subject || "") : "";
   const descInput = document.getElementById('table-desc-input');
@@ -245,15 +247,17 @@ function openTableRegisterForm(tableData = null) {
   initTableResizers();
 
   renderTableRows(tableData ? tableData.items || [] : [createEmptyRowItem()]);
+  setupAutoSaveListeners();
 }
 
 function closeTableRegisterForm() {
+  saveTableDocSilently();
   document.getElementById('table-register-form-container').classList.add('hidden');
   document.getElementById('view-mode-container').classList.remove('hidden');
 }
 
 function createEmptyRowItem() {
-  return { id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, unit: "", question: "", questionImage: "", answer: "", isChoiceMode: false, wrongChoices: "", choiceImage: "", importance: "中", explanation: "" };
+  return { id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, unit: "", question: "", questionImage: "", answer: "", wrongChoices: "", choiceImage: "", importance: "中", explanation: "" };
 }
 
 function renderTableRows(items) {
@@ -290,7 +294,6 @@ function appendRowToTable(item, index, importances) {
     <td class="p-1"><textarea rows="1" class="w-full border rounded p-1 row-q text-xs auto-expand" placeholder="問題...">${item.question || ''}</textarea></td>
     <td class="p-1 text-center"><button type="button" class="row-img-btn w-7 h-7 rounded text-xs font-bold transition flex items-center justify-center mx-auto ${hasImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}" title="問題画像添付">${hasImg ? '🖼️' : '+'}</button></td>
     <td class="p-1"><textarea rows="1" class="w-full border rounded p-1 row-a text-xs auto-expand" placeholder="解答(カンマ区切り)">${item.answer || ''}</textarea></td>
-    <td class="p-1 text-center"><input type="checkbox" class="row-choice-chk w-4 h-4 rounded cursor-pointer" ${item.isChoiceMode ? 'checked' : ''} title="選択肢形式にする"/></td>
     <td class="p-1"><input type="text" class="w-full border rounded p-1 row-wrong text-xs" placeholder="誤答(カンマ区切り)" value="${item.wrongChoices || ''}"/></td>
     <td class="p-1 text-center"><button type="button" class="row-choice-img-btn w-7 h-7 rounded text-xs font-bold transition flex items-center justify-center mx-auto ${hasChoiceImg ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}" title="選択肢画像添付">${hasChoiceImg ? '🖼️' : '+'}</button></td>
     <td class="p-1 text-center"><select class="w-full border rounded p-1 row-imp bg-white text-xs">${importances.map(imp => `<option value="${imp}" ${item.importance === imp ? 'selected' : ''}>${imp}</option>`).join('')}</select></td>
@@ -300,7 +303,15 @@ function appendRowToTable(item, index, importances) {
 
   wrapper.querySelectorAll('textarea.auto-expand').forEach(ta => {
     setTimeout(() => autoResizeTextarea(ta), 0);
-    ta.addEventListener('input', () => autoResizeTextarea(ta));
+    ta.addEventListener('input', () => {
+      autoResizeTextarea(ta);
+      saveTableDocSilently();
+    });
+  });
+
+  wrapper.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', saveTableDocSilently);
+    el.addEventListener('change', saveTableDocSilently);
   });
 
   const handle = wrapper.querySelector('.drag-handle');
@@ -314,6 +325,7 @@ function appendRowToTable(item, index, importances) {
   wrapper.addEventListener('dragend', () => {
     wrapper.classList.remove('opacity-40');
     wrapper.removeAttribute('draggable');
+    saveTableDocSilently();
   });
   wrapper.addEventListener('dragover', (e) => e.preventDefault());
   wrapper.addEventListener('drop', (e) => {
@@ -329,13 +341,67 @@ function appendRowToTable(item, index, importances) {
         tbody.insertBefore(draggingRow, wrapper);
       }
       reindexTableRows();
+      saveTableDocSilently();
     }
   });
 
   wrapper.querySelector('.row-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.imgData, 'question'));
   wrapper.querySelector('.row-choice-img-btn').addEventListener('click', () => openQaImageModal(item.id, wrapper.dataset.choiceImgData, 'choice'));
-  wrapper.querySelector('.row-del-btn').addEventListener('click', () => { wrapper.remove(); reindexTableRows(); });
+  wrapper.querySelector('.row-del-btn').addEventListener('click', () => { 
+    wrapper.remove(); 
+    reindexTableRows(); 
+    saveTableDocSilently();
+  });
   tbody.appendChild(wrapper);
+}
+
+let autoSaveTimer = null;
+function saveTableDocSilently() {
+  if (!currentUser) return;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(async () => {
+    const tableId = document.getElementById('editing-table-id').value;
+    if (!tableId) return;
+    const title = document.getElementById('table-name-input').value.trim() || "無題の一問一答";
+    const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
+    const description = document.getElementById('table-desc-input').value.trim() || "";
+
+    const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
+    const items = [];
+    document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
+      const uInput = tr.querySelector('.row-unit');
+      const qArea = tr.querySelector('.row-q');
+      const aArea = tr.querySelector('.row-a');
+      const wrongInput = tr.querySelector('.row-wrong');
+      const impArea = tr.querySelector('.row-imp');
+      const expArea = tr.querySelector('.row-exp');
+      if (qArea) {
+        items.push({
+          id: tr.dataset.itemId,
+          unit: uInput ? uInput.value.trim() : "",
+          question: qArea.value.trim(),
+          questionImage: tr.dataset.imgData || "",
+          answer: aArea ? aArea.value.trim() : "",
+          wrongChoices: wrongInput ? wrongInput.value.trim() : "",
+          choiceImage: tr.dataset.choiceImgData || "",
+          importance: impArea ? impArea.value : "中",
+          explanation: expArea ? expArea.value.trim() : ""
+        });
+      }
+    });
+
+    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, description, importances, items, updatedAt: Date.now(), isDeleted: false }, { merge: true });
+  }, 300);
+}
+
+function setupAutoSaveListeners() {
+  ['table-name-input', 'table-subject-input', 'table-desc-input', 'table-importances-input'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.removeEventListener('input', saveTableDocSilently);
+      el.addEventListener('input', saveTableDocSilently);
+    }
+  });
 }
 
 function reindexTableRows() {
@@ -371,47 +437,15 @@ if (addQaRowBtn) {
     newItem.importance = defaultImp;
     newItem.explanation = defaultExp;
     appendRowToTable(newItem, tbody.children.length, importances);
+    saveTableDocSilently();
   });
 }
 
 const saveTableDocBtn = document.getElementById('save-table-doc-btn');
 if (saveTableDocBtn) {
-  saveTableDocBtn.addEventListener('click', async () => {
-    if (!currentUser) return;
-    const title = document.getElementById('table-name-input').value.trim();
-    if (!title) { alert("タイトルを入力してください。"); return; }
-    const subject = document.getElementById('table-subject-input').value.trim() || "未設定";
-    const description = document.getElementById('table-desc-input').value.trim() || "";
-
-    const importances = document.getElementById('table-importances-input').value.split(',').map(s => s.trim()).filter(Boolean);
-    const items = [];
-    document.querySelectorAll('#qa-table-tbody tr').forEach(tr => {
-      const uInput = tr.querySelector('.row-unit');
-      const qArea = tr.querySelector('.row-q');
-      const aArea = tr.querySelector('.row-a');
-      const chkBox = tr.querySelector('.row-choice-chk');
-      const wrongInput = tr.querySelector('.row-wrong');
-      const impArea = tr.querySelector('.row-imp');
-      const expArea = tr.querySelector('.row-exp');
-      if (qArea) {
-        items.push({
-          id: tr.dataset.itemId,
-          unit: uInput ? uInput.value.trim() : "",
-          question: qArea.value.trim(),
-          questionImage: tr.dataset.imgData || "",
-          answer: aArea ? aArea.value.trim() : "",
-          isChoiceMode: chkBox ? chkBox.checked : false,
-          wrongChoices: wrongInput ? wrongInput.value.trim() : "",
-          choiceImage: tr.dataset.choiceImgData || "",
-          importance: impArea ? impArea.value : "中",
-          explanation: expArea ? expArea.value.trim() : ""
-        });
-      }
-    });
-
-    const tableId = document.getElementById('editing-table-id').value || `table_${Date.now()}`;
-    await setDoc(doc(db, "users", currentUser.uid, "questionTables", tableId), { title, subject, description, importances, items, updatedAt: Date.now(), isDeleted: false }, { merge: true });
-    alert("一問一答表を保存しました！"); closeTableRegisterForm();
+  saveTableDocBtn.addEventListener('click', () => {
+    saveTableDocSilently();
+    closeTableRegisterForm();
   });
 }
 
@@ -490,6 +524,7 @@ if (qaImgRemoveBtn) {
         const btn = tr.querySelector('.row-img-btn');
         if (btn) { btn.className = "row-img-btn w-7 h-7 rounded text-xs font-bold bg-slate-200 text-slate-700 flex items-center justify-center mx-auto"; btn.innerText = "+"; }
       }
+      saveTableDocSilently();
     }
     document.getElementById('qa-image-modal').classList.add('hidden');
   });
@@ -508,6 +543,7 @@ if (qaModalFileInput) {
       if (tr) {
         if (activeModalType === 'choice') tr.dataset.choiceImgData = base64;
         else tr.dataset.imgData = base64;
+        saveTableDocSilently();
       }
     };
     reader.readAsDataURL(file);
@@ -534,6 +570,7 @@ if (qaImgSaveBtn) {
           btn.innerText = hasImg ? '🖼️' : '+'; 
         }
       }
+      saveTableDocSilently();
     }
     document.getElementById('qa-image-modal').classList.add('hidden');
   });
