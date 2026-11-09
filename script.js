@@ -1,9 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { renderTableList } from "./keywords.js";
-import { renderKanjiTableList } from "./kanji.js";
-import { renderTimelineList } from "./timeline.js";
+import { renderTableList, openTableRegisterForm } from "./keywords.js";
+import { renderKanjiTableList, openKanjiRegisterForm } from "./kanji.js";
+import { renderTimelineList, openTimelineRegisterForm } from "./timeline.js";
 import { renderExamList, openExamRegisterForm } from "./exam.js";
 import { openRefreshModeModal } from "./refresh.js";
 
@@ -90,6 +90,35 @@ function closeAllEditorsAndSync() {
   });
 }
 
+// サイドバー上部の「新しく追加」ボタンの共通ハンドラ
+safeListen('sidebar-add-btn', 'click', () => {
+  closeAllEditorsAndSync();
+  if (currentMainView === 'documents') {
+    ['qd-title', 'qd-subject', 'qd-unit', 'qd-desc', 'qd-question', 'qd-answer'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    const modal = document.getElementById('quick-doc-modal');
+    if (modal) modal.classList.remove('hidden');
+  } else if (currentMainView === 'collections') {
+    openCollectionEditModal(null);
+  } else if (currentMainView === 'tables') {
+    openTableRegisterForm(null);
+  } else if (currentMainView === 'kanji') {
+    openKanjiRegisterForm(null);
+  } else if (currentMainView === 'timeline') {
+    openTimelineRegisterForm(null);
+  } else if (currentMainView === 'exams') {
+    openExamRegisterForm(null, {
+      documents: allDocuments,
+      collections: allCollections,
+      questionTables: allTables,
+      kanjiTables: allKanjiTables,
+      timelineTables: allTimelines
+    });
+  }
+});
+
 safeListen('nav-docs', 'click', () => {
   closeAllEditorsAndSync();
   currentMainView = 'documents'; isPlayingCollection = false; setActiveNavTab('nav-docs'); renderCurrentView(); clearDocumentView(); 
@@ -130,26 +159,6 @@ safeListen('nav-refresh', 'click', () => {
     kanjiTables: allKanjiTables,
     timelineTables: allTimelines,
     exams: allExams
-  });
-});
-
-safeListen('nav-quick-doc-add', 'click', () => {
-  ['qd-title', 'qd-subject', 'qd-unit', 'qd-desc', 'qd-question', 'qd-answer'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-  const modal = document.getElementById('quick-doc-modal');
-  if (modal) modal.classList.remove('hidden');
-});
-
-safeListen('btn-nav-exam-register', 'click', () => {
-  closeAllEditorsAndSync();
-  openExamRegisterForm(null, {
-    documents: allDocuments,
-    collections: allCollections,
-    questionTables: allTables,
-    kanjiTables: allKanjiTables,
-    timelineTables: allTimelines
   });
 });
 
@@ -368,11 +377,6 @@ function updateUnitFilterUI(docs) {
     checkboxesArea.appendChild(lbl);
   });
 }
-
-safeListen('create-collection-btn', 'click', () => {
-  closeAllEditorsAndSync();
-  openCollectionEditModal(null);
-});
 
 function renderCollectionList(collections) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
