@@ -55,8 +55,13 @@ function updateAuthUI(user) {
   }
 }
 
-document.getElementById('login-btn').addEventListener('click', () => signInWithPopup(auth, new GoogleAuthProvider()));
-document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
+function safeListen(id, event, callback) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(event, callback);
+}
+
+safeListen('login-btn', 'click', () => signInWithPopup(auth, new GoogleAuthProvider()));
+safeListen('logout-btn', 'click', () => signOut(auth));
 
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
 const sidebar = document.getElementById('sidebar');
@@ -66,49 +71,50 @@ if (toggleSidebarBtn && sidebar) {
 
 function closeAllEditorsAndSync() {
   const saveBtn = document.getElementById('save-table-doc-btn');
-  if (saveBtn && !document.getElementById('table-register-form-container').classList.contains('hidden')) {
+  if (saveBtn && document.getElementById('table-register-form-container') && !document.getElementById('table-register-form-container').classList.contains('hidden')) {
     saveBtn.click();
   }
   const kanjiSaveBtn = document.getElementById('save-kanji-doc-btn');
-  if (kanjiSaveBtn && !document.getElementById('kanji-register-form-container').classList.contains('hidden')) {
+  if (kanjiSaveBtn && document.getElementById('kanji-register-form-container') && !document.getElementById('kanji-register-form-container').classList.contains('hidden')) {
     kanjiSaveBtn.click();
   }
   const timelineSaveBtn = document.getElementById('save-timeline-doc-btn');
-  if (timelineSaveBtn && !document.getElementById('timeline-register-form-container').classList.contains('hidden')) {
+  if (timelineSaveBtn && document.getElementById('timeline-register-form-container') && !document.getElementById('timeline-register-form-container').classList.contains('hidden')) {
     timelineSaveBtn.click();
   }
 
-  document.getElementById('table-register-form-container').classList.add('hidden');
-  document.getElementById('kanji-register-form-container').classList.add('hidden');
-  document.getElementById('timeline-register-form-container').classList.add('hidden');
+  ['table-register-form-container', 'kanji-register-form-container', 'timeline-register-form-container'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
 }
 
-document.getElementById('nav-docs').addEventListener('click', () => {
+safeListen('nav-docs', 'click', () => {
   closeAllEditorsAndSync();
   currentMainView = 'documents'; isPlayingCollection = false; setActiveNavTab('nav-docs'); renderCurrentView(); clearDocumentView(); 
 });
 
-document.getElementById('nav-collections').addEventListener('click', () => {
+safeListen('nav-collections', 'click', () => {
   closeAllEditorsAndSync();
   currentMainView = 'collections'; isPlayingCollection = false; setActiveNavTab('nav-collections'); renderCurrentView(); 
 });
 
-document.getElementById('nav-tables').addEventListener('click', () => {
+safeListen('nav-tables', 'click', () => {
   closeAllEditorsAndSync();
   currentMainView = 'tables'; isPlayingCollection = false; setActiveNavTab('nav-tables'); renderCurrentView(); 
 });
 
-document.getElementById('nav-kanji').addEventListener('click', () => {
+safeListen('nav-kanji', 'click', () => {
   closeAllEditorsAndSync();
   currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); 
 });
 
-document.getElementById('nav-timeline').addEventListener('click', () => {
+safeListen('nav-timeline', 'click', () => {
   closeAllEditorsAndSync();
   currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); 
 });
 
-document.getElementById('nav-refresh').addEventListener('click', () => {
+safeListen('nav-refresh', 'click', () => {
   closeAllEditorsAndSync();
   isPlayingCollection = false;
   openRefreshModeModal({
@@ -120,25 +126,28 @@ document.getElementById('nav-refresh').addEventListener('click', () => {
   });
 });
 
-document.getElementById('nav-quick-doc-add').addEventListener('click', () => {
-  document.getElementById('qd-title').value = "";
-  document.getElementById('qd-subject').value = "";
-  document.getElementById('qd-unit').value = "";
-  document.getElementById('qd-desc').value = "";
-  document.getElementById('qd-question').value = "";
-  document.getElementById('qd-answer').value = "";
-  document.getElementById('quick-doc-modal').classList.remove('hidden');
+safeListen('nav-quick-doc-add', 'click', () => {
+  ['qd-title', 'qd-subject', 'qd-unit', 'qd-desc', 'qd-question', 'qd-answer'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  const modal = document.getElementById('quick-doc-modal');
+  if (modal) modal.classList.remove('hidden');
 });
-document.getElementById('close-quick-doc-modal').addEventListener('click', () => document.getElementById('quick-doc-modal').classList.add('hidden'));
 
-document.getElementById('save-quick-doc-btn').addEventListener('click', async () => {
+safeListen('close-quick-doc-modal', 'click', () => {
+  const modal = document.getElementById('quick-doc-modal');
+  if (modal) modal.classList.add('hidden');
+});
+
+safeListen('save-quick-doc-btn', 'click', async () => {
   if (!currentUser) return;
-  const title = document.getElementById('qd-title').value.trim();
-  const subject = document.getElementById('qd-subject').value.trim() || "未設定";
-  const unit = document.getElementById('qd-unit').value.trim() || "";
-  const description = document.getElementById('qd-desc').value.trim() || "";
-  const questionText = document.getElementById('qd-question').value.trim();
-  const answerText = document.getElementById('qd-answer').value.trim();
+  const title = document.getElementById('qd-title')?.value.trim() || "";
+  const subject = document.getElementById('qd-subject')?.value.trim() || "未設定";
+  const unit = document.getElementById('qd-unit')?.value.trim() || "";
+  const description = document.getElementById('qd-desc')?.value.trim() || "";
+  const questionText = document.getElementById('qd-question')?.value.trim() || "";
+  const answerText = document.getElementById('qd-answer')?.value.trim() || "";
 
   if (!title || !questionText) { alert("タイトルと問題文を入力してください。"); return; }
 
@@ -158,17 +167,24 @@ document.getElementById('save-quick-doc-btn').addEventListener('click', async ()
   });
 
   alert("短問を追加しました！");
-  document.getElementById('quick-doc-modal').classList.add('hidden');
+  const modal = document.getElementById('quick-doc-modal');
+  if (modal) modal.classList.add('hidden');
 });
 
-document.getElementById('open-trash-modal-btn').addEventListener('click', () => {
+safeListen('open-trash-modal-btn', 'click', () => {
   renderTrashModalItems();
-  document.getElementById('trash-modal').classList.remove('hidden');
+  const modal = document.getElementById('trash-modal');
+  if (modal) modal.classList.remove('hidden');
 });
-document.getElementById('close-trash-modal').addEventListener('click', () => document.getElementById('trash-modal').classList.add('hidden'));
+
+safeListen('close-trash-modal', 'click', () => {
+  const modal = document.getElementById('trash-modal');
+  if (modal) modal.classList.add('hidden');
+});
 
 function renderTrashModalItems() {
   const container = document.getElementById('trash-items-list');
+  if (!container) return;
   container.innerHTML = '';
   
   const allTrashed = [];
@@ -297,6 +313,7 @@ function updateUnitFilterUI(docs) {
   const units = [...new Set(docs.map(d => d.unit).filter(Boolean))];
   const container = document.getElementById('unit-filter-container');
   const checkboxesArea = document.getElementById('unit-checkboxes');
+  if (!container || !checkboxesArea) return;
   if (units.length === 0) {
     container.classList.add('hidden');
     return;
@@ -320,7 +337,7 @@ function updateUnitFilterUI(docs) {
   });
 }
 
-document.getElementById('create-collection-btn').addEventListener('click', () => {
+safeListen('create-collection-btn', 'click', () => {
   closeAllEditorsAndSync();
   openCollectionEditModal(null);
 });
@@ -366,12 +383,17 @@ function renderCollectionList(collections) {
 }
 
 function openCollectionEditModal(collData) {
-  document.getElementById('editing-coll-id').value = collData ? collData.id : '';
-  document.getElementById('coll-name-input').value = collData ? collData.name : '';
-  document.getElementById('coll-desc-input').value = collData ? (collData.description || '') : '';
-  document.getElementById('coll-modal-title').innerText = collData ? "問題集の編集" : "新しい問題集の作成";
+  const editingCollId = document.getElementById('editing-coll-id');
+  const collNameInput = document.getElementById('coll-name-input');
+  const collDescInput = document.getElementById('coll-desc-input');
+  const collModalTitle = document.getElementById('coll-modal-title');
+  if (editingCollId) editingCollId.value = collData ? collData.id : '';
+  if (collNameInput) collNameInput.value = collData ? collData.name : '';
+  if (collDescInput) collDescInput.value = collData ? (collData.description || '') : '';
+  if (collModalTitle) collModalTitle.innerText = collData ? "問題集の編集" : "新しい問題集の作成";
   
   const listEl = document.getElementById('coll-problems-checkbox-list');
+  if (!listEl) return;
   listEl.innerHTML = '';
   const selectedIds = collData && collData.documentIds ? collData.documentIds : [];
 
@@ -383,22 +405,28 @@ function openCollectionEditModal(collData) {
     label.innerHTML = `<input type="checkbox" value="${doc.id}" ${isChecked ? 'checked' : ''} class="rounded"/><span class="truncate">${doc.title}</span>`;
     listEl.appendChild(label);
   });
-  document.getElementById('collection-edit-modal').classList.remove('hidden');
+  const modal = document.getElementById('collection-edit-modal');
+  if (modal) modal.classList.remove('hidden');
 }
 
-document.getElementById('close-coll-modal').addEventListener('click', () => document.getElementById('collection-edit-modal').classList.add('hidden'));
-document.getElementById('save-coll-modal-btn').addEventListener('click', async () => {
+safeListen('close-coll-modal', 'click', () => {
+  const modal = document.getElementById('collection-edit-modal');
+  if (modal) modal.classList.add('hidden');
+});
+
+safeListen('save-coll-modal-btn', 'click', async () => {
   if (!currentUser) return;
-  const name = document.getElementById('coll-name-input').value.trim();
-  const description = document.getElementById('coll-desc-input').value.trim();
+  const name = document.getElementById('coll-name-input')?.value.trim() || "";
+  const description = document.getElementById('coll-desc-input')?.value.trim() || "";
   if (!name) { alert("問題集名を入力してください。"); return; }
   const checkedBoxes = document.querySelectorAll('#coll-problems-checkbox-list input[type="checkbox"]:checked');
   const documentIds = Array.from(checkedBoxes).map(b => b.value);
-  const editingId = document.getElementById('editing-coll-id').value;
+  const editingId = document.getElementById('editing-coll-id')?.value || "";
   const collId = editingId ? editingId : `coll_${Date.now()}`;
 
   await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, description, documentIds, updatedAt: Date.now(), isDeleted: false }, { merge: true });
-  document.getElementById('collection-edit-modal').classList.add('hidden');
+  const modal = document.getElementById('collection-edit-modal');
+  if (modal) modal.classList.add('hidden');
 });
 
 function startCollectionPlay(collData) {
@@ -408,91 +436,118 @@ function startCollectionPlay(collData) {
   collectionPlayIndex = 0;
   isPlayingCollection = true;
 
-  document.getElementById('view-mode-container').classList.add('hidden');
-  document.getElementById('table-player-container').classList.add('hidden');
-  document.getElementById('kanji-player-container').classList.add('hidden');
-  document.getElementById('refresh-mode-container').classList.add('hidden');
-  document.getElementById('collection-player-container').classList.remove('hidden');
-  document.getElementById('collection-player-title').innerText = collData.name;
-  document.getElementById('collection-player-desc').innerText = collData.description || '';
+  ['view-mode-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  const collPlayer = document.getElementById('collection-player-container');
+  if (collPlayer) collPlayer.classList.remove('hidden');
+  
+  const titleEl = document.getElementById('collection-player-title');
+  if (titleEl) titleEl.innerText = collData.name;
+  const descEl = document.getElementById('collection-player-desc');
+  if (descEl) descEl.innerText = collData.description || '';
   renderCollectionPlayerCurrent();
 }
 
 function renderCollectionPlayerCurrent() {
   const docData = collectionPlayList[collectionPlayIndex];
   currentDocData = docData;
-  document.getElementById('coll-progress-badge').innerText = `${collectionPlayIndex + 1} / ${collectionPlayList.length}`;
-  renderPaneContentForContainer(document.getElementById('coll-q-display-area'), docData.questionText, docData.questionMaterials);
+  const prog = document.getElementById('coll-progress-badge');
+  if (prog) prog.innerText = `${collectionPlayIndex + 1} / ${collectionPlayList.length}`;
+  const qArea = document.getElementById('coll-q-display-area');
+  if (qArea) renderPaneContentForContainer(qArea, docData.questionText, docData.questionMaterials);
   
   const collAnsPane = document.getElementById('coll-answer-pane');
+  const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
   if (isContinuousAnswerOn) {
-    collAnsPane.classList.remove('hidden');
-    renderPaneContentForContainer(document.getElementById('coll-a-display-area'), docData.answerText, docData.answerMaterials, "解答解説なし");
-    document.getElementById('toggle-coll-answer-btn').innerText = "💡 解答解説を隠す";
+    if (collAnsPane) collAnsPane.classList.remove('hidden');
+    const aArea = document.getElementById('coll-a-display-area');
+    if (aArea) renderPaneContentForContainer(aArea, docData.answerText, docData.answerMaterials, "解答解説なし");
+    if (toggleCollAnswerBtn) toggleCollAnswerBtn.innerText = "💡 解答解説を隠す";
   } else {
-    collAnsPane.classList.add('hidden');
-    document.getElementById('toggle-coll-answer-btn').innerText = "💡 解答解説を表示";
+    if (collAnsPane) collAnsPane.classList.add('hidden');
+    if (toggleCollAnswerBtn) toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
   }
 }
 
-document.getElementById('coll-next-btn').addEventListener('click', () => {
+safeListen('coll-next-btn', 'click', () => {
   if (collectionPlayIndex < collectionPlayList.length - 1) { collectionPlayIndex++; renderCollectionPlayerCurrent(); }
   else { alert("問題集の最後の問題です！"); }
 });
-document.getElementById('coll-prev-btn').addEventListener('click', () => {
+
+safeListen('coll-prev-btn', 'click', () => {
   if (collectionPlayIndex > 0) { collectionPlayIndex--; renderCollectionPlayerCurrent(); }
 });
-document.getElementById('exit-collection-btn').addEventListener('click', () => {
+
+safeListen('exit-collection-btn', 'click', () => {
   isPlayingCollection = false;
-  document.getElementById('collection-player-container').classList.add('hidden');
-  document.getElementById('view-mode-container').classList.remove('hidden');
+  const collPlayer = document.getElementById('collection-player-container');
+  if (collPlayer) collPlayer.classList.add('hidden');
+  const viewMode = document.getElementById('view-mode-container');
+  if (viewMode) viewMode.classList.remove('hidden');
   clearDocumentView();
 });
 
 const answerPane = document.getElementById('answer-pane');
 const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
-document.getElementById('toggle-answer-pane-btn').addEventListener('click', () => {
-  answerPane.classList.toggle('hidden');
-  toggleAnswerBtn.innerText = answerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
+safeListen('toggle-answer-pane-btn', 'click', () => {
+  if (answerPane) answerPane.classList.toggle('hidden');
+  if (toggleAnswerBtn && answerPane) {
+    toggleAnswerBtn.innerText = answerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
+  }
 });
-document.getElementById('close-answer-pane-btn').addEventListener('click', () => {
-  answerPane.classList.add('hidden');
-  toggleAnswerBtn.innerText = "💡 解答解説を表示";
+safeListen('close-answer-pane-btn', 'click', () => {
+  if (answerPane) answerPane.classList.add('hidden');
+  if (toggleAnswerBtn) toggleAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
 const collAnswerPane = document.getElementById('coll-answer-pane');
 const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
-toggleCollAnswerBtn.addEventListener('click', () => {
-  collAnswerPane.classList.toggle('hidden');
-  toggleCollAnswerBtn.innerText = collAnswerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
-  if (!collAnswerPane.classList.contains('hidden') && currentDocData) {
-    renderPaneContentForContainer(document.getElementById('coll-a-display-area'), currentDocData.answerText, currentDocData.answerMaterials, "解答解説なし");
+safeListen('toggle-coll-answer-btn', 'click', () => {
+  if (collAnswerPane) collAnswerPane.classList.toggle('hidden');
+  if (toggleCollAnswerBtn && collAnswerPane) {
+    toggleCollAnswerBtn.innerText = collAnswerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
+  }
+  if (collAnswerPane && !collAnswerPane.classList.contains('hidden') && currentDocData) {
+    const aArea = document.getElementById('coll-a-display-area');
+    if (aArea) renderPaneContentForContainer(aArea, currentDocData.answerText, currentDocData.answerMaterials, "解答解説なし");
   }
 });
-document.getElementById('close-coll-answer-pane-btn').addEventListener('click', () => {
-  collAnswerPane.classList.add('hidden');
-  toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
+safeListen('close-coll-answer-pane-btn', 'click', () => {
+  if (collAnswerPane) collAnswerPane.classList.add('hidden');
+  if (toggleCollAnswerBtn) toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
 });
 
-document.getElementById('toggle-continuous-answer-btn').addEventListener('click', () => {
+safeListen('toggle-continuous-answer-btn', 'click', () => {
   isContinuousAnswerOn = !isContinuousAnswerOn;
-  document.getElementById('continuous-status-text').innerText = isContinuousAnswerOn ? "ON" : "OFF";
-  document.getElementById('continuous-status-text').className = isContinuousAnswerOn ? "text-emerald-600 font-bold" : "text-gray-500 font-semibold";
+  const statusText = document.getElementById('continuous-status-text');
+  if (statusText) {
+    statusText.innerText = isContinuousAnswerOn ? "ON" : "OFF";
+    statusText.className = isContinuousAnswerOn ? "text-emerald-600 font-bold" : "text-gray-500 font-semibold";
+  }
   if (isPlayingCollection) renderCollectionPlayerCurrent();
 });
 
-document.getElementById('header-menu-btn').addEventListener('click', () => {
+safeListen('header-menu-btn', 'click', () => {
   if (!currentDocData && !isPlayingCollection) { alert("問題を選択してください。"); return; }
-  document.getElementById('stats-modal').classList.remove('hidden');
+  const statsModal = document.getElementById('stats-modal');
+  if (statsModal) statsModal.classList.remove('hidden');
   updateModalStats();
 });
-document.getElementById('close-stats-modal').addEventListener('click', () => document.getElementById('stats-modal').classList.add('hidden'));
+
+safeListen('close-stats-modal', 'click', () => {
+  const statsModal = document.getElementById('stats-modal');
+  if (statsModal) statsModal.classList.add('hidden');
+});
 
 function updateModalStats() {
   const docData = currentDocData;
   if (!docData) return;
-  document.getElementById('modal-target-title').innerText = docData.title;
+  const targetTitle = document.getElementById('modal-target-title');
+  if (targetTitle) targetTitle.innerText = docData.title;
   const container = document.getElementById('subquestion-stats-container');
+  if (!container) return;
   container.innerHTML = `
     <div class="space-y-3">
       <div class="flex justify-between items-center bg-green-50 p-3 rounded">
@@ -507,37 +562,47 @@ function updateModalStats() {
   `;
 }
 
-document.getElementById('btn-record-commit').addEventListener('click', async () => {
+safeListen('btn-record-commit', 'click', async () => {
   if (!currentUser || !currentDocData) return;
-  const c = parseInt(document.getElementById('stat-correct-input').value) || 0;
-  const i = parseInt(document.getElementById('stat-incorrect-input').value) || 0;
+  const c = parseInt(document.getElementById('stat-correct-input')?.value) || 0;
+  const i = parseInt(document.getElementById('stat-incorrect-input')?.value) || 0;
   currentDocData.stats = { correct: c, incorrect: i };
   await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: currentDocData.stats }, { merge: true });
-  document.getElementById('stats-modal').classList.add('hidden');
+  const statsModal = document.getElementById('stats-modal');
+  if (statsModal) statsModal.classList.add('hidden');
 });
 
 function selectDocument(docData) {
   selectedDocId = docData.id;
   currentDocData = docData;
-  document.getElementById('doc-title').innerText = docData.title;
-  document.getElementById('edit-current-btn').classList.remove('hidden');
-  renderPaneContentForContainer(document.getElementById('question-display-area'), docData.questionText, docData.questionMaterials);
-  answerPane.classList.add('hidden');
-  toggleAnswerBtn.classList.remove('hidden');
-  toggleAnswerBtn.innerText = "💡 解答解説を表示";
+  const titleEl = document.getElementById('doc-title');
+  if (titleEl) titleEl.innerText = docData.title;
+  const editBtn = document.getElementById('edit-current-btn');
+  if (editBtn) editBtn.classList.remove('hidden');
+  const qArea = document.getElementById('question-display-area');
+  if (qArea) renderPaneContentForContainer(qArea, docData.questionText, docData.questionMaterials);
+  if (answerPane) answerPane.classList.add('hidden');
+  if (toggleAnswerBtn) {
+    toggleAnswerBtn.classList.remove('hidden');
+    toggleAnswerBtn.innerText = "💡 解答解説を表示";
+  }
 }
 
 function clearDocumentView() {
   selectedDocId = null;
   currentDocData = null;
-  document.getElementById('doc-title').innerText = "左のリストから問題を選択してください";
-  document.getElementById('edit-current-btn').classList.add('hidden');
-  document.getElementById('question-display-area').innerHTML = '<div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>';
-  answerPane.classList.add('hidden');
-  toggleAnswerBtn.classList.add('hidden');
+  const titleEl = document.getElementById('doc-title');
+  if (titleEl) titleEl.innerText = "左のリストから問題を選択してください";
+  const editBtn = document.getElementById('edit-current-btn');
+  if (editBtn) editBtn.classList.add('hidden');
+  const qArea = document.getElementById('question-display-area');
+  if (qArea) qArea.innerHTML = '<div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>';
+  if (answerPane) answerPane.classList.add('hidden');
+  if (toggleAnswerBtn) toggleAnswerBtn.classList.add('hidden');
 }
 
 function renderPaneContentForContainer(container, text, materials, fallbackText = "問題文なし") {
+  if (!container) return;
   container.innerHTML = '';
   if (text) {
     const p = document.createElement('div');
