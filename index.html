@@ -2,12 +2,12 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>MONDAI</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="./style.css">
 </head>
-<body class="bg-slate-100 text-slate-800 h-screen flex flex-col overflow-hidden font-sans">
+<body class="bg-slate-100 text-slate-800 h-[100dvh] flex flex-col overflow-hidden font-sans">
 
   <!-- ヘッダー -->
   <header class="bg-white border-b px-4 py-2 flex justify-between items-center shrink-0 shadow-xs">
@@ -71,7 +71,7 @@
     <main class="flex-1 bg-slate-50 flex flex-col overflow-hidden relative w-full">
 
       <!-- 1. 通常閲覧・演習モードコンテナ -->
-      <div id="view-mode-container" class="flex-1 flex flex-col overflow-hidden p-4">
+      <div id="view-mode-container" class="flex-1 flex flex-col overflow-hidden p-3 sm:p-4">
         <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden">
           <div class="p-3 border-b flex justify-between items-center bg-slate-50">
             <h2 id="doc-title" class="font-bold text-sm text-slate-700 truncate">左のリストから問題を選択してください</h2>
@@ -202,18 +202,18 @@
       </div>
 
       <!-- 5. 一問一答 プレイヤー画面 -->
-      <div id="table-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-6">
+      <div id="table-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-2 sm:p-6">
         <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
-          <div class="p-4 border-b flex justify-between items-center bg-emerald-50 shrink-0">
+          <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-emerald-50 shrink-0">
             <div>
               <span id="table-item-unit-badge" class="px-2 py-0.5 bg-emerald-200 text-emerald-900 rounded font-bold text-[10px] mr-2">単元</span>
               <span id="table-loop-badge" class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">通常周回</span>
             </div>
             <div id="table-progress-count" class="font-bold text-xs text-emerald-900">問題 1 / 10</div>
-            <button id="exit-table-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs">✕ 終了</button>
+            <button id="exit-table-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
           </div>
 
-          <div id="table-exercise-content" class="flex-1 p-6 overflow-y-auto space-y-4">
+          <div id="table-exercise-content" class="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
             <div id="t-ex-question" class="text-base font-bold text-slate-800 leading-relaxed"></div>
             <div id="t-ex-q-image-area"></div>
             
@@ -239,7 +239,7 @@
             <button id="restart-table-ex-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg font-bold text-xs shadow-xs transition">もう一度演習する</button>
           </div>
 
-          <div class="p-4 border-t bg-white shrink-0">
+          <div class="p-3 sm:p-4 border-t bg-white shrink-0">
             <button id="t-ex-show-ans-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">解答を表示</button>
             <div id="t-ex-grade-buttons" class="hidden flex gap-3 w-full">
               <button id="t-ex-incorrect-btn" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">❌ 不正解</button>
@@ -250,18 +250,18 @@
       </div>
 
       <!-- 6. 漢字 プレイヤー画面 -->
-      <div id="kanji-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-6">
+      <div id="kanji-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-2 sm:p-6">
         <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
-          <div class="p-4 border-b flex justify-between items-center bg-amber-50">
+          <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-amber-50 shrink-0">
             <div>
               <span id="kanji-item-unit-badge" class="px-2 py-0.5 bg-amber-200 text-amber-900 rounded font-bold text-[10px] mr-2">単元</span>
               <span id="kanji-loop-badge" class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">通常周回</span>
             </div>
             <div id="kanji-progress-count" class="font-bold text-xs text-amber-900">文章 1 / 5</div>
-            <button id="exit-kanji-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs">✕ 終了</button>
+            <button id="exit-kanji-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
           </div>
 
-          <div id="kanji-exercise-content" class="flex-1 p-6 overflow-y-auto space-y-4">
+          <div id="kanji-exercise-content" class="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
             <div id="kanji-ex-passage"></div>
             
             <div id="kanji-ex-answer-area" class="hidden space-y-3 pt-4 border-t">
@@ -280,26 +280,26 @@
             <button id="restart-kanji-ex-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-lg font-bold text-xs shadow-xs transition">もう一度演習する</button>
           </div>
 
-          <div class="p-4 border-t bg-white flex justify-between items-center">
-            <button id="kanji-ex-show-ans-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-lg text-xs font-bold transition shadow-xs">解答を表示</button>
+          <div class="p-3 sm:p-4 border-t bg-white shrink-0">
+            <button id="kanji-ex-show-ans-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">解答を表示</button>
           </div>
         </div>
       </div>
 
       <!-- 7. 問題集プレイ画面 -->
-      <div id="collection-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-6">
+      <div id="collection-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-2 sm:p-6">
         <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
-          <div class="p-4 border-b flex justify-between items-center bg-blue-50">
+          <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-blue-50 shrink-0">
             <div>
               <h3 id="collection-player-title" class="font-bold text-sm text-blue-900">問題集タイトル</h3>
               <p id="collection-player-desc" class="text-[10px] text-blue-700"></p>
             </div>
             <div class="flex items-center gap-3">
               <span id="coll-progress-badge" class="px-2.5 py-1 bg-blue-200 text-blue-900 rounded font-bold text-xs">1 / 5</span>
-              <button id="exit-collection-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs">✕ 終了</button>
+              <button id="exit-collection-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
             </div>
           </div>
-          <div id="coll-q-display-area" class="flex-1 p-6 overflow-y-auto"></div>
+          <div id="coll-q-display-area" class="flex-1 p-4 sm:p-6 overflow-y-auto"></div>
           <div id="coll-answer-pane" class="hidden border-t bg-amber-50/40 p-4 max-h-60 overflow-y-auto">
             <div class="flex justify-between items-center mb-2">
               <span class="font-bold text-xs text-amber-800">💡 解答・解説</span>
@@ -307,11 +307,11 @@
             </div>
             <div id="coll-a-display-area"></div>
           </div>
-          <div class="p-4 border-t bg-white flex justify-between items-center">
-            <button id="toggle-coll-answer-btn" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-xs">💡 解答解説を表示</button>
+          <div class="p-3 sm:p-4 border-t bg-white flex justify-between items-center shrink-0">
+            <button id="toggle-coll-answer-btn" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition shadow-xs">💡 解答解説を表示</button>
             <div class="flex gap-2">
-              <button id="coll-prev-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg text-xs font-bold transition">◀ 前の問題</button>
-              <button id="coll-next-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-xs">次の問題 ▶</button>
+              <button id="coll-prev-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold transition">◀ 前へ</button>
+              <button id="coll-next-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition shadow-xs">次へ ▶</button>
             </div>
           </div>
         </div>
@@ -446,7 +446,6 @@
         </div>
       </div>
       <button id="save-quick-doc-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-xs">追加する</button>
-修正するモーダル追加する</button>
     </div>
   </div>
 
