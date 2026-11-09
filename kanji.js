@@ -1,4 +1,4 @@
-import { db, currentUser } from "./script.js";
+import { db, currentUser, closeAllEditorsAndSync } from "./script.js";
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 let activeKanjiData = null;
@@ -70,6 +70,8 @@ function closeKanjiRegisterForm() {
   if (kanjiReg) kanjiReg.classList.add('hidden');
   const viewMode = document.getElementById('view-mode-container');
   if (viewMode) viewMode.classList.remove('hidden');
+
+  closeAllEditorsAndSync();
 }
 
 function createEmptyKanjiPassageItem() {
@@ -280,6 +282,18 @@ function openKanjiConfigModal(tableData) {
   activeKanjiData = tableData;
   const modal = document.getElementById('kanji-config-modal');
   if (modal) modal.classList.remove('hidden');
+
+  const unitSelect = document.getElementById('kanji-config-scope-unit-select');
+  if (unitSelect) {
+    const units = [...new Set((tableData.passages || []).map(p => p.unit).filter(Boolean))];
+    unitSelect.innerHTML = '<option value="all">すべての単元</option>';
+    units.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u;
+      opt.innerText = u;
+      unitSelect.appendChild(opt);
+    });
+  }
 }
 
 const closeKanjiConfigModalBtn = document.getElementById('close-kanji-config-modal');
@@ -294,11 +308,17 @@ const startKanjiExerciseBtn = document.getElementById('start-kanji-exercise-btn'
 if (startKanjiExerciseBtn) {
   startKanjiExerciseBtn.addEventListener('click', () => {
     const order = document.getElementById('kanji-config-order-select')?.value || 'normal';
+    const unitScope = document.getElementById('kanji-config-scope-unit-select')?.value || 'all';
     const scope = document.getElementById('kanji-config-scope-select')?.value || 'all';
     const dirFilter = document.getElementById('kanji-config-dir-select')?.value || 'all';
+    const limitSetting = document.getElementById('kanji-config-limit-select')?.value || '20';
 
     let passagesList = [...activeKanjiData.passages];
     passagesList = passagesList.filter(p => !p.unit || !hiddenUnits.has(p.unit));
+
+    if (unitScope !== 'all') {
+      passagesList = passagesList.filter(p => p.unit === unitScope);
+    }
 
     if (dirFilter !== 'all') {
       passagesList = passagesList.map(p => ({
@@ -319,8 +339,18 @@ if (startKanjiExerciseBtn) {
 
     if (order === 'random') passagesList.sort(() => Math.random() - 0.5);
 
+    if (limitSetting !== 'all') {
+      const limitCount = parseInt(limitSetting) || 20;
+      passagesList = passagesList.slice(0, limitCount);
+    }
+
     kanjiExerciseQueue = passagesList; kanjiRetryQueue = []; currentKanjiIndex = 0; kanjiTotalCount = kanjiExerciseQueue.length; isKanjiRetryLoop = false;
   
+    if (kanjiExerciseQueue.length === 0) {
+      alert("条件に一致する問題がありません。");
+      return;
+    }
+
     const configModal = document.getElementById('kanji-config-modal');
     if (configModal) configModal.classList.add('hidden');
 
@@ -335,6 +365,11 @@ if (startKanjiExerciseBtn) {
     if (kanjiExContent) kanjiExContent.classList.remove('hidden');
     const kanjiExResult = document.getElementById('kanji-exercise-result');
     if (kanjiExResult) kanjiExResult.classList.add('hidden');
+
+    if (window.innerWidth < 768) {
+      const sb = document.getElementById('sidebar');
+      if (sb) sb.classList.add('collapsed');
+    }
 
     renderKanjiExerciseCurrentItem();
   });
@@ -509,5 +544,10 @@ if (exitKanjiPlayerBtn) {
     if (kanjiPlayer) kanjiPlayer.classList.add('hidden');
     const viewMode = document.getElementById('view-mode-container');
     if (viewMode) viewMode.classList.remove('hidden');
+
+    if (window.innerWidth < 768) {
+      const sb = document.getElementById('sidebar');
+      if (sb) sb.classList.remove('collapsed');
+    }
   });
 }
