@@ -45,7 +45,8 @@ if (cancelKanjiRegBtn) {
   cancelKanjiRegBtn.addEventListener('click', closeKanjiRegisterForm);
 }
 
-function openKanjiRegisterForm(kanjiData = null) {
+// 修正: export を追加しました
+export function openKanjiRegisterForm(kanjiData = null) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'timeline-register-form-container', 'table-register-form-container'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
@@ -284,7 +285,6 @@ function openKanjiConfigModal(tableData) {
   const modal = document.getElementById('kanji-config-modal');
   if (modal) modal.classList.remove('hidden');
 
-  // 漢字設定モーダル内の単元絞り込み用セレクトボックス動的生成
   const unitSelect = document.getElementById('kanji-config-scope-unit-select');
   if (unitSelect) {
     const units = [...new Set((tableData.passages || []).map(p => p.unit).filter(Boolean))];
@@ -423,7 +423,7 @@ function renderKanjiExerciseCurrentItem() {
             processedWords.add(sub.targetWord);
             let displayWord = sub.targetWord;
             if (currentDir === '書き') {
-              displayWord = hiraganaToKatalana ? hiraganaToKatakana(chosenReading) : chosenReading;
+              displayWord = hiraganaToKatakana ? hiraganaToKatakana(chosenReading) : chosenReading;
             }
             const badge = hasMultiple ? `(${idx + 1})` : '';
             return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
