@@ -386,7 +386,7 @@ function renderKanjiExerciseAllPassages() {
   container.innerHTML = '';
 
   const prog = document.getElementById('kanji-progress-count');
-  if (prog) prog.innerText = `全 ${kanjiExerciseQueue.length} 文章 (一括表示)`;
+  if (prog) prog.innerText = `全 ${kanjiExerciseQueue.length} 文章`;
   const loopBadge = document.getElementById('kanji-loop-badge');
   if (loopBadge) loopBadge.innerText = isKanjiRetryLoop ? "🔥 リトライ周回" : "通常周回";
 
@@ -438,18 +438,17 @@ function renderKanjiExerciseAllPassages() {
     }
 
     const card = document.createElement('div');
-    card.className = "bg-white border rounded-xl p-4 shadow-xs space-y-4";
+    card.className = "bg-white border rounded-xl p-4 shadow-xs space-y-3";
     
     card.innerHTML = `
-      <div class="flex justify-between items-center border-b pb-2">
+      <div class="flex justify-between items-center border-b pb-1.5">
         <span class="font-bold text-xs text-amber-900 bg-amber-100 px-2 py-0.5 rounded">文章 ${pIdx + 1} ${passageItem.unit ? `(${passageItem.unit})` : ''}</span>
       </div>
-      <div class="text-base font-serif text-slate-900 leading-relaxed kanji-passage-box p-3 bg-slate-50/50 rounded-lg border">
+      <div class="text-sm font-serif text-slate-900 leading-relaxed kanji-passage-box p-2.5 bg-slate-50/50 rounded-lg border">
         ${formattedPassage}
       </div>
-      <div class="space-y-2 border-t pt-3">
-        <div class="text-xs font-bold text-slate-500 mb-2">問題と解答確認：</div>
-        <div class="space-y-2 sub-items-container"></div>
+      <div class="space-y-1.5 border-t pt-2">
+        <div class="space-y-1.5 sub-items-container"></div>
       </div>
     `;
 
@@ -468,43 +467,33 @@ function renderKanjiExerciseAllPassages() {
       const numberPrefix = `(${sIdx + 1})`;
 
       const row = document.createElement('div');
-      row.className = "flex flex-wrap items-center justify-between p-2.5 bg-white border rounded-lg text-xs gap-2";
+      row.className = "flex items-center justify-between p-2 bg-slate-50/70 border rounded-lg text-xs gap-2";
       row.innerHTML = `
-        <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+        <div class="flex items-center gap-2 flex-1 min-w-0">
           <span class="font-bold text-slate-700 w-5 flex-shrink-0">${numberPrefix}</span>
-          <span class="font-bold text-slate-900">「${sub.targetWord}」 [${resolvedDir}]</span>
+          <span class="font-bold text-slate-900 truncate">「${sub.targetWord}」 [${resolvedDir}]</span>
           
-          <!-- 解答表示部分（解答ボタンとテキストの横並び） -->
-          <div class="inline-flex items-center gap-2 ml-auto sm:ml-2">
-            <button type="button" class="show-single-ans-btn bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded text-[11px] font-bold transition shadow-xs">解答を表示</button>
-            <span class="single-ans-text hidden text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
-              ${ansText} <span class="text-[10px] font-normal text-emerald-600">(${ansTypeStr})</span>
-            </span>
-          </div>
+          <!-- 解答テキスト（初期は非表示。ヘッダーの「全解答を表示」または個別のボタンで表示） -->
+          <span class="single-ans-text hidden text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 truncate ml-2">
+            ${ansText} <span class="text-[10px] font-normal text-emerald-600">(${ansTypeStr})</span>
+          </span>
         </div>
         
         <!-- 各問個別の正誤記録ボタン -->
-        <div class="flex gap-1 flex-shrink-0 ml-auto">
-          <button type="button" class="px-3 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-slate-100 hover:bg-green-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">⭕ 正解</button>
-          <button type="button" class="px-3 py-1 rounded text-xs font-bold transition kanji-sub-incorrect bg-slate-100 hover:bg-red-600 hover:text-white text-slate-700 border" data-sub-id="${subId}">❌ 誤答</button>
+        <div class="flex gap-1 flex-shrink-0">
+          <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-white hover:bg-green-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">⭕ 正解</button>
+          <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-incorrect bg-white hover:bg-red-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">❌ 誤答</button>
         </div>
       `;
 
-      const showSingleAnsBtn = row.querySelector('.show-single-ans-btn');
-      const singleAnsText = row.querySelector('.single-ans-text');
-      showSingleAnsBtn.addEventListener('click', () => {
-        singleAnsText.classList.remove('hidden');
-        showSingleAnsBtn.classList.add('hidden');
-      });
-
       row.querySelector('.kanji-sub-correct').addEventListener('click', (e) => {
-        e.target.className = "px-3 py-1 rounded text-xs font-bold bg-green-600 text-white border border-green-600";
-        e.target.nextElementSibling.className = "px-3 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
+        e.target.className = "px-2.5 py-1 rounded text-xs font-bold bg-green-600 text-white border border-green-600 shadow-xs";
+        e.target.nextElementSibling.className = "px-2.5 py-1 rounded text-xs font-bold bg-white text-slate-700 border shadow-xs";
       });
 
       row.querySelector('.kanji-sub-incorrect').addEventListener('click', (e) => {
-        e.target.className = "px-3 py-1 rounded text-xs font-bold bg-red-600 text-white border border-red-600";
-        e.target.previousElementSibling.className = "px-3 py-1 rounded text-xs font-bold bg-slate-100 text-slate-700 border";
+        e.target.className = "px-2.5 py-1 rounded text-xs font-bold bg-red-600 text-white border border-red-600 shadow-xs";
+        e.target.previousElementSibling.className = "px-2.5 py-1 rounded text-xs font-bold bg-white text-slate-700 border shadow-xs";
         if (!kanjiRetryQueue.includes(passageItem)) kanjiRetryQueue.push(passageItem);
       });
 
@@ -515,12 +504,11 @@ function renderKanjiExerciseAllPassages() {
   });
 }
 
-// ヘッダーの「全解答を表示」ボタン
+// ヘッダーにある1つの「全解答を表示」ボタン
 const kanjiAllShowAnsBtn = document.getElementById('kanji-all-show-ans-btn');
 if (kanjiAllShowAnsBtn) {
   kanjiAllShowAnsBtn.addEventListener('click', () => {
     document.querySelectorAll('.single-ans-text').forEach(el => el.classList.remove('hidden'));
-    document.querySelectorAll('.show-single-ans-btn').forEach(el => el.classList.add('hidden'));
   });
 }
 
