@@ -159,7 +159,7 @@
                 <th class="p-2 w-36">傍線部(漢字)</th>
                 <th class="p-2 w-36">読み仮名</th>
                 <th class="p-2 w-28 text-center">出題形式</th>
-                <th class="p-2 text-center w-16">削除</th>
+                <th class="p-2 text-center w-20">操作</th>
               </tr>
             </thead>
             <tbody id="kanji-table-tbody"></tbody>
@@ -250,27 +250,22 @@
         </div>
       </div>
 
-      <!-- 6. 漢字 プレイヤー画面 -->
+      <!-- 6. 漢字 プレイヤー画面 （全一括表示対応） -->
       <div id="kanji-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-2 sm:p-6">
         <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
           <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-amber-50 shrink-0">
-            <div>
-              <span id="kanji-item-unit-badge" class="px-2 py-0.5 bg-amber-200 text-amber-900 rounded font-bold text-[10px] mr-2">単元</span>
+            <div class="flex items-center gap-2">
               <span id="kanji-loop-badge" class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">通常周回</span>
+              <span id="kanji-progress-count" class="font-bold text-xs text-amber-900">全 0 文章</span>
             </div>
-            <div id="kanji-progress-count" class="font-bold text-xs text-amber-900">文章 1 / 5</div>
-            <button id="exit-kanji-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
+            <div class="flex items-center gap-2">
+              <button id="kanji-all-show-ans-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-xs font-bold transition shadow-xs">全解答を表示</button>
+              <button id="exit-kanji-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
+            </div>
           </div>
 
-          <div id="kanji-exercise-content" class="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
-            <div id="kanji-ex-passage"></div>
-            
-            <div id="kanji-ex-answer-area" class="hidden space-y-3 pt-4 border-t">
-              <div class="p-3 bg-amber-50 rounded-lg border border-amber-200 space-y-2">
-                <span class="text-xs font-bold text-amber-800 block">解答確認・自己採点：</span>
-                <div id="kanji-sub-items-container" class="space-y-2"></div>
-              </div>
-            </div>
+          <div id="kanji-exercise-content" class="flex-1 p-4 sm:p-6 overflow-y-auto space-y-6">
+            <div id="kanji-all-passages-container" class="space-y-6"></div>
           </div>
 
           <!-- 完了結果画面 -->
@@ -281,8 +276,8 @@
             <button id="restart-kanji-ex-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-lg font-bold text-xs shadow-xs transition">もう一度演習する</button>
           </div>
 
-          <div class="p-3 sm:p-4 border-t bg-white shrink-0">
-            <button id="kanji-ex-show-ans-btn" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">解答を表示</button>
+          <div class="p-3 sm:p-4 border-t bg-white shrink-0 flex justify-between items-center">
+            <button id="kanji-finish-ex-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-bold transition shadow-xs">演習完了・次へ進む ➡</button>
           </div>
         </div>
       </div>
