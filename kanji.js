@@ -419,15 +419,24 @@ function renderKanjiExerciseAllPassages() {
             matchCount++;
             if (matchCount === 1 && !processedWords.has(sub.targetWord)) {
               processedWords.add(sub.targetWord);
-              let displayWord = sub.targetWord;
-              if (currentDir === '書き') {
-                displayWord = hiraganaToKatakana(chosenReading);
+              
+              // 【仕様変更】
+              // 読み取り問題：そのまま（漢字）表示して、ひらがなを答える
+              // 書き取り問題：傍線部は読み仮名のカタカナに直されているので、元の漢字を答える
+              let displayWord = "";
+              if (currentDir === '読み') {
+                displayWord = sub.targetWord; // 読み取りは漢字をそのまま見せる
+              } else {
+                displayWord = hiraganaToKatakana(chosenReading); // 書き取りはカタカナに直す
               }
+
               const badge = hasMultiple ? `(${sIdx + 1})` : '';
               return `<span class="kanji-target-underline"><b>${badge}${displayWord}</b></span>`;
             } else {
-              let repeatWord = sub.targetWord;
-              if (currentDir === '書き') {
+              let repeatWord = "";
+              if (currentDir === '読み') {
+                repeatWord = sub.targetWord;
+              } else {
                 repeatWord = hiraganaToKatakana(chosenReading);
               }
               return repeatWord;
@@ -458,12 +467,17 @@ function renderKanjiExerciseAllPassages() {
       const resolvedDir = passageItem.resolvedDirections[subId] || '読み';
       const chosenReading = passageItem.resolvedReadings[subId] || sub.reading || sub.targetWord;
       
-      let ansText = resolvedDir === '読み' ? (sub.reading || sub.targetWord) : sub.targetWord;
-      if (resolvedDir === '書き') {
-        ansText = hiraganaToKatakana(chosenReading);
+      // 正解となる解答データ
+      let ansText = "";
+      let ansTypeStr = "";
+      if (resolvedDir === '読み') {
+        ansText = sub.reading || sub.targetWord; // 読みの答えはひらがな
+        ansTypeStr = 'ひらがな';
+      } else {
+        ansText = sub.targetWord; // 書きの答えは元の漢字
+        ansTypeStr = '漢字';
       }
 
-      const ansTypeStr = resolvedDir === '読み' ? 'ひらがな' : 'カタカナ';
       const numberPrefix = `(${sIdx + 1})`;
 
       const row = document.createElement('div');
@@ -473,13 +487,13 @@ function renderKanjiExerciseAllPassages() {
           <span class="font-bold text-slate-700 w-5 flex-shrink-0">${numberPrefix}</span>
           <span class="font-bold text-slate-900 truncate">「${sub.targetWord}」 [${resolvedDir}]</span>
           
-          <!-- 解答テキスト（初期は非表示。ヘッダーの「全解答を表示」または個別のボタンで表示） -->
+          <!-- 解答テキスト（初期は非表示。ヘッダーの「全解答を表示」ボタンでまとめて表示） -->
           <span class="single-ans-text hidden text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 truncate ml-2">
             ${ansText} <span class="text-[10px] font-normal text-emerald-600">(${ansTypeStr})</span>
           </span>
         </div>
         
-        <!-- 各問個別の正誤記録ボタン -->
+        <!-- 各問個別の正誤記録ボタン（解答表示後に使用） -->
         <div class="flex gap-1 flex-shrink-0">
           <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-white hover:bg-green-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">⭕ 正解</button>
           <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-incorrect bg-white hover:bg-red-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">❌ 誤答</button>
@@ -504,7 +518,7 @@ function renderKanjiExerciseAllPassages() {
   });
 }
 
-// ヘッダーにある1つの「全解答を表示」ボタン
+// ヘッダーにある1つの「全解答を表示」ボタンでまとめて解答を表示
 const kanjiAllShowAnsBtn = document.getElementById('kanji-all-show-ans-btn');
 if (kanjiAllShowAnsBtn) {
   kanjiAllShowAnsBtn.addEventListener('click', () => {
