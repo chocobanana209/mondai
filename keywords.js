@@ -1,10 +1,9 @@
-import { db, currentUser, closeAllEditorsAndSync } from "./script.js";
+import { db, currentUser } from "./script.js";
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 let activeTableData = null;
 let exerciseQueue = [], retryQueue = [], currentExerciseIndex = 0, exerciseTotalCount = 0, isRetryLoop = false;
 let activeModalRowId = null, activeModalType = 'question';
-export let hiddenUnits = new Set();
 
 const DEFAULT_COL_WIDTHS = {
   drag: "36px",
@@ -20,8 +19,7 @@ const DEFAULT_COL_WIDTHS = {
   action: "42px"
 };
 
-export function renderTableList(tables, passedHiddenUnits) {
-  if (passedHiddenUnits) hiddenUnits = passedHiddenUnits;
+export function renderTableList(tables, hiddenUnits) {
   const container = document.getElementById('sidebar-list'); if (!container) return;
   const activeTables = tables.filter(t => !t.isDeleted);
   container.innerHTML = activeTables.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">一問一答表がありません。</p>' : '';
@@ -59,7 +57,7 @@ function openTableConfigModal(tableData) {
   const modal = document.getElementById('table-config-modal');
   if (modal) modal.classList.remove('hidden');
 
-  // 単元一覧を自動抽出してセレクトボックスに反映
+  // 単元絞り込み用セレクトボックスがある場合の動的生成
   const unitSelect = document.getElementById('config-scope-unit-select');
   if (unitSelect) {
     const units = [...new Set((tableData.items || []).map(i => i.unit).filter(Boolean))];
@@ -84,14 +82,22 @@ if (closeTableConfigModalBtn) {
 const startTableExerciseBtn = document.getElementById('start-table-exercise-btn');
 if (startTableExerciseBtn) {
   startTableExerciseBtn.addEventListener('click', () => {
+    if (!activeTableData) return;
     const order = document.getElementById('config-order-select')?.value || 'normal';
-    const unitScope = document.getElementById('config-scope-unit-select')?.value || 'all';
     const scope = document.getElementById('config-scope-select')?.value || 'all';
-    const limitSetting = document.getElementById('config-limit-select')?.value || '20';
+    const unitScope = document.getElementById('config-scope-unit-select')?.value || 'all';
+    
+    // 制限数の取得（入力欄またはセレクトボックス両対応）
+    const limitInput = document.getElementById('config-limit-input');
+    const limitSelect = document.getElementById('config-limit-select');
+    let limit = 10;
+    if (limitInput) {
+      limit = parseInt(limitInput.value) || 10;
+    } else if (limitSelect) {
+      limit = limitSelect.value === 'all' ? 999999 : (parseInt(limitSelect.value) || 20);
+    }
 
     let items = [...activeTableData.items];
-    items = items.filter(item => !item.unit || !hiddenUnits.has(item.unit));
-
     if (unitScope !== 'all') {
       items = items.filter(item => item.unit === unitScope);
     }
@@ -102,13 +108,7 @@ if (startTableExerciseBtn) {
     }
 
     if (order === 'random') items.sort(() => Math.random() - 0.5);
-
-    if (limitSetting !== 'all') {
-      const limitCount = parseInt(limitSetting) || 20;
-      items = items.slice(0, limitCount);
-    }
-
-    exerciseQueue = items;
+    exerciseQueue = items.slice(0, limit);
     retryQueue = [];
     currentExerciseIndex = 0;
     exerciseTotalCount = exerciseQueue.length;
@@ -133,12 +133,6 @@ if (startTableExerciseBtn) {
     if (tableExContent) tableExContent.classList.remove('hidden');
     const tableExResult = document.getElementById('table-exercise-result');
     if (tableExResult) tableExResult.classList.add('hidden');
-
-    // 狭い画面ではプレイヤー表示時にサイドバーを自動でたたむ
-    if (window.innerWidth < 768) {
-      const sb = document.getElementById('sidebar');
-      if (sb) sb.classList.add('collapsed');
-    }
 
     renderTableExerciseCurrentItem();
   });
@@ -185,19 +179,17 @@ function renderTableExerciseCurrentItem() {
 
   const choicesArea = document.getElementById('t-ex-choices-area');
   const hasWrongChoices = item.wrongChoices && item.wrongChoices.trim().length > 0;
-  const correctList = (item.answer || "").split(',').map(s => s.trim()).filter(Boolean);
-  const isMultipleAnswer = correctList.length > 1;
 
   if (choicesArea) {
     if (hasWrongChoices) {
       choicesArea.classList.remove('hidden');
-      choicesArea.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-1">${isMultipleAnswer ? '選択肢（複数選択可）：' : '選択肢：'}</div>`;
+      choicesArea.innerHTML = `<div class="text-xs font-bold text-slate-500 mb-1">選択肢：</div>`;
       
+      const correctList = (item.answer || "").split(',').map(s => s.trim()).filter(Boolean);
       const primaryCorrect = correctList.length > 0 ? correctList[0] : "";
       const wrongList = item.wrongChoices.split(',').map(s => s.trim()).filter(Boolean);
       
-      let allChoices = [];
-      correctList.forEach(c => allChoices.push({ text: c, isCorrect: true, img: item.choiceImage || "" }));
+      let allChoices = [{ text: primaryCorrect, isCorrect: true, img: item.choiceImage || "" }];
       wrongList.forEach(w => allChoices.push({ text: w, isCorrect: false, img: "" }));
       allChoices.sort(() => Math.random() - 0.5);
 
@@ -206,29 +198,18 @@ function renderTableExerciseCurrentItem() {
       allChoices.forEach((ch, idx) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.dataset.choiceText = ch.text;
-        btn.dataset.isCorrect = ch.isCorrect ? "true" : "false";
-        btn.className = "choice-option-btn p-3 border rounded-lg bg-white hover:bg-slate-50 text-left text-xs font-medium flex items-center gap-3 transition shadow-xs";
+        btn.className = "p-3 border rounded-lg bg-white hover:bg-slate-50 text-left text-xs font-medium flex items-center gap-3 transition shadow-xs";
         btn.innerHTML = `<span class="font-bold text-blue-600">${idx + 1}.</span> <span>${ch.text}</span> ${ch.img ? `<img src="${ch.img}" class="max-h-12 ml-auto rounded"/>` : ''}`;
-        
         btn.onclick = () => {
-          if (isMultipleAnswer) {
-            // 複数正解の場合：トグル選択式
-            btn.classList.toggle('bg-blue-50');
-            btn.classList.toggle('border-blue-500');
-            btn.classList.toggle('border-2');
-            btn.classList.toggle('selected-choice');
+          grid.querySelectorAll('button').forEach(b => b.disabled = true);
+          const isMatched = correctList.some(c => c === ch.text);
+          if (isMatched) {
+            btn.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
           } else {
-            // 単一正解の場合：従来通り即時判定して解説へ
-            grid.querySelectorAll('button').forEach(b => b.disabled = true);
-            if (ch.isCorrect) {
-              btn.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
-            } else {
-              btn.className = "p-3 border-2 border-red-500 rounded-lg bg-red-50 text-left text-xs font-bold flex items-center gap-3";
-            }
-            const showAnsBtn = document.getElementById('t-ex-show-ans-btn');
-            if (showAnsBtn) showAnsBtn.click();
+            btn.className = "p-3 border-2 border-red-500 rounded-lg bg-red-50 text-left text-xs font-bold flex items-center gap-3";
           }
+          const showAnsBtn = document.getElementById('t-ex-show-ans-btn');
+          if (showAnsBtn) showAnsBtn.click();
         };
         grid.appendChild(btn);
       });
@@ -247,16 +228,7 @@ function renderTableExerciseCurrentItem() {
   const ansArea = document.getElementById('t-ex-answer-area');
   if (ansArea) ansArea.classList.add('hidden');
   const showAnsBtn = document.getElementById('t-ex-show-ans-btn');
-  const submitChoicesBtn = document.getElementById('t-ex-submit-choices-btn');
-
-  if (hasWrongChoices && isMultipleAnswer) {
-    if (showAnsBtn) showAnsBtn.classList.add('hidden');
-    if (submitChoicesBtn) submitChoicesBtn.classList.remove('hidden');
-  } else {
-    if (showAnsBtn) showAnsBtn.classList.remove('hidden');
-    if (submitChoicesBtn) submitChoicesBtn.classList.add('hidden');
-  }
-
+  if (showAnsBtn) showAnsBtn.classList.remove('hidden');
   const gradeBtns = document.getElementById('t-ex-grade-buttons');
   if (gradeBtns) gradeBtns.classList.add('hidden');
 }
@@ -267,37 +239,6 @@ if (tExShowAnsBtn) {
     const ansArea = document.getElementById('t-ex-answer-area');
     if (ansArea) ansArea.classList.remove('hidden');
     tExShowAnsBtn.classList.add('hidden');
-    const gradeBtns = document.getElementById('t-ex-grade-buttons');
-    if (gradeBtns) gradeBtns.classList.remove('hidden');
-  });
-}
-
-// 複数選択式の「解答する」ボタンの処理
-const tExSubmitChoicesBtn = document.getElementById('t-ex-submit-choices-btn');
-if (tExSubmitChoicesBtn) {
-  tExSubmitChoicesBtn.addEventListener('click', () => {
-    const selectedBtns = document.querySelectorAll('.choice-option-btn.selected-choice');
-    const allBtns = document.querySelectorAll('.choice-option-btn');
-    
-    allBtns.forEach(b => b.disabled = true);
-    
-    let allCorrect = true;
-    allBtns.forEach(b => {
-      const isCorrect = b.dataset.isCorrect === "true";
-      const isSelected = b.classList.contains('selected-choice');
-      if (isCorrect && !isSelected) allCorrect = false;
-      if (!isCorrect && isSelected) allCorrect = false;
-
-      if (isCorrect) {
-        b.className = "p-3 border-2 border-green-500 rounded-lg bg-green-50 text-left text-xs font-bold flex items-center gap-3";
-      } else if (isSelected) {
-        b.className = "p-3 border-2 border-red-500 rounded-lg bg-red-50 text-left text-xs font-bold flex items-center gap-3";
-      }
-    });
-
-    tExSubmitChoicesBtn.classList.add('hidden');
-    const ansArea = document.getElementById('t-ex-answer-area');
-    if (ansArea) ansArea.classList.remove('hidden');
     const gradeBtns = document.getElementById('t-ex-grade-buttons');
     if (gradeBtns) gradeBtns.classList.remove('hidden');
   });
@@ -348,12 +289,12 @@ if (exitTablePlayerBtn) {
     if (tablePlayer) tablePlayer.classList.add('hidden');
     const viewMode = document.getElementById('view-mode-container');
     if (viewMode) viewMode.classList.remove('hidden');
-    
-    if (window.innerWidth < 768) {
-      const sb = document.getElementById('sidebar');
-      if (sb) sb.classList.remove('collapsed');
-    }
   });
+}
+
+const btnNavTableReg = document.getElementById('btn-nav-table-register');
+if (btnNavTableReg) {
+  btnNavTableReg.addEventListener('click', () => openTableRegisterForm(null));
 }
 
 const cancelTableRegBtn = document.getElementById('cancel-table-register-btn');
@@ -361,7 +302,7 @@ if (cancelTableRegBtn) {
   cancelTableRegBtn.addEventListener('click', closeTableRegisterForm);
 }
 
-export function openTableRegisterForm(tableData = null) {
+function openTableRegisterForm(tableData = null) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'timeline-register-form-container', 'kanji-register-form-container'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
@@ -394,8 +335,6 @@ function closeTableRegisterForm() {
   if (tableReg) tableReg.classList.add('hidden');
   const viewMode = document.getElementById('view-mode-container');
   if (viewMode) viewMode.classList.remove('hidden');
-  
-  closeAllEditorsAndSync();
 }
 
 function createEmptyRowItem() {
