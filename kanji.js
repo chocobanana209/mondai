@@ -264,6 +264,7 @@ const addKanjiRowBtn = document.getElementById('add-kanji-row-btn');
 if (addKanjiRowBtn) {
   addKanjiRowBtn.addEventListener('click', () => {
     const currentPassages = collectCurrentKanjiPassages();
+    // 直上の単元名を引き継ぐ
     const lastUnit = currentPassages.length > 0 ? (currentPassages[currentPassages.length - 1].unit || "") : "";
     currentPassages.push(createEmptyKanjiPassageItem(lastUnit));
     renderKanjiTableRows(currentPassages);
@@ -420,14 +421,12 @@ function renderKanjiExerciseAllPassages() {
             if (matchCount === 1 && !processedWords.has(sub.targetWord)) {
               processedWords.add(sub.targetWord);
               
-              // 【仕様変更】
-              // 読み取り問題：そのまま（漢字）表示して、ひらがなを答える
-              // 書き取り問題：傍線部は読み仮名のカタカナに直されているので、元の漢字を答える
+              // 読み取り：漢字そのまま表示 / 書き取り：カタカナに直す
               let displayWord = "";
               if (currentDir === '読み') {
-                displayWord = sub.targetWord; // 読み取りは漢字をそのまま見せる
+                displayWord = sub.targetWord;
               } else {
-                displayWord = hiraganaToKatakana(chosenReading); // 書き取りはカタカナに直す
+                displayWord = hiraganaToKatakana(chosenReading);
               }
 
               const badge = hasMultiple ? `(${sIdx + 1})` : '';
@@ -456,9 +455,7 @@ function renderKanjiExerciseAllPassages() {
       <div class="text-sm font-serif text-slate-900 leading-relaxed kanji-passage-box p-2.5 bg-slate-50/50 rounded-lg border">
         ${formattedPassage}
       </div>
-      <div class="space-y-1.5 border-t pt-2">
-        <div class="space-y-1.5 sub-items-container"></div>
-      </div>
+      <div class="space-y-1.5 border-t pt-2 sub-items-container"></div>
     `;
 
     const subContainer = card.querySelector('.sub-items-container');
@@ -467,36 +464,37 @@ function renderKanjiExerciseAllPassages() {
       const resolvedDir = passageItem.resolvedDirections[subId] || '読み';
       const chosenReading = passageItem.resolvedReadings[subId] || sub.reading || sub.targetWord;
       
-      // 正解となる解答データ
       let ansText = "";
       let ansTypeStr = "";
       if (resolvedDir === '読み') {
-        ansText = sub.reading || sub.targetWord; // 読みの答えはひらがな
+        ansText = sub.reading || sub.targetWord;
         ansTypeStr = 'ひらがな';
       } else {
-        ansText = sub.targetWord; // 書きの答えは元の漢字
+        ansText = sub.targetWord;
         ansTypeStr = '漢字';
       }
 
       const numberPrefix = `(${sIdx + 1})`;
 
+      // 各問の行：小問ごとの重複テキスト表示は削り、右側に「解答」と「正誤ボタン」をまとめて横並び配置
       const row = document.createElement('div');
       row.className = "flex items-center justify-between p-2 bg-slate-50/70 border rounded-lg text-xs gap-2";
       row.innerHTML = `
-        <div class="flex items-center gap-2 flex-1 min-w-0">
-          <span class="font-bold text-slate-700 w-5 flex-shrink-0">${numberPrefix}</span>
-          <span class="font-bold text-slate-900 truncate">「${sub.targetWord}」 [${resolvedDir}]</span>
-          
-          <!-- 解答テキスト（初期は非表示。ヘッダーの「全解答を表示」ボタンでまとめて表示） -->
-          <span class="single-ans-text hidden text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 truncate ml-2">
-            ${ansText} <span class="text-[10px] font-normal text-emerald-600">(${ansTypeStr})</span>
-          </span>
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-slate-700">${numberPrefix} [${resolvedDir}]</span>
         </div>
         
-        <!-- 各問個別の正誤記録ボタン（解答表示後に使用） -->
-        <div class="flex gap-1 flex-shrink-0">
-          <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-white hover:bg-green-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">⭕ 正解</button>
-          <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-incorrect bg-white hover:bg-red-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">❌ 誤答</button>
+        <div class="flex items-center gap-2 ml-auto">
+          <!-- 解答テキスト（初期は hidden。全解答を表示、または個別表示ボタンで表示） -->
+          <span class="single-ans-text hidden text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+            ${ansText} <span class="text-[10px] font-normal text-emerald-600">(${ansTypeStr})</span>
+          </span>
+          
+          <!-- 正誤記録ボタン（解答表示後・または常時横並び） -->
+          <div class="flex gap-1">
+            <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-white hover:bg-green-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">⭕ 正解</button>
+            <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-incorrect bg-white hover:bg-red-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">❌ 誤答</button>
+          </div>
         </div>
       `;
 
@@ -518,7 +516,7 @@ function renderKanjiExerciseAllPassages() {
   });
 }
 
-// ヘッダーにある1つの「全解答を表示」ボタンでまとめて解答を表示
+// ヘッダーにある「全解答を表示」ボタンで、すべての解答テキストが一斉に表示される
 const kanjiAllShowAnsBtn = document.getElementById('kanji-all-show-ans-btn');
 if (kanjiAllShowAnsBtn) {
   kanjiAllShowAnsBtn.addEventListener('click', () => {
