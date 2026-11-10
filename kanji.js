@@ -264,7 +264,6 @@ const addKanjiRowBtn = document.getElementById('add-kanji-row-btn');
 if (addKanjiRowBtn) {
   addKanjiRowBtn.addEventListener('click', () => {
     const currentPassages = collectCurrentKanjiPassages();
-    // 直上の単元名を引き継ぐ
     const lastUnit = currentPassages.length > 0 ? (currentPassages[currentPassages.length - 1].unit || "") : "";
     currentPassages.push(createEmptyKanjiPassageItem(lastUnit));
     renderKanjiTableRows(currentPassages);
@@ -421,7 +420,6 @@ function renderKanjiExerciseAllPassages() {
             if (matchCount === 1 && !processedWords.has(sub.targetWord)) {
               processedWords.add(sub.targetWord);
               
-              // 読み取り：漢字そのまま表示 / 書き取り：カタカナに直す
               let displayWord = "";
               if (currentDir === '読み') {
                 displayWord = sub.targetWord;
@@ -476,7 +474,6 @@ function renderKanjiExerciseAllPassages() {
 
       const numberPrefix = `(${sIdx + 1})`;
 
-      // 各問の行：小問ごとの重複テキスト表示は削り、右側に「解答」と「正誤ボタン」をまとめて横並び配置
       const row = document.createElement('div');
       row.className = "flex items-center justify-between p-2 bg-slate-50/70 border rounded-lg text-xs gap-2";
       row.innerHTML = `
@@ -485,12 +482,10 @@ function renderKanjiExerciseAllPassages() {
         </div>
         
         <div class="flex items-center gap-2 ml-auto">
-          <!-- 解答テキスト（初期は hidden。全解答を表示、または個別表示ボタンで表示） -->
           <span class="single-ans-text hidden text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
             ${ansText} <span class="text-[10px] font-normal text-emerald-600">(${ansTypeStr})</span>
           </span>
           
-          <!-- 正誤記録ボタン（解答表示後・または常時横並び） -->
           <div class="flex gap-1">
             <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-correct bg-white hover:bg-green-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">⭕ 正解</button>
             <button type="button" class="px-2.5 py-1 rounded text-xs font-bold transition kanji-sub-incorrect bg-white hover:bg-red-600 hover:text-white text-slate-700 border shadow-xs" data-sub-id="${subId}">❌ 誤答</button>
@@ -516,7 +511,6 @@ function renderKanjiExerciseAllPassages() {
   });
 }
 
-// ヘッダーにある「全解答を表示」ボタンで、すべての解答テキストが一斉に表示される
 const kanjiAllShowAnsBtn = document.getElementById('kanji-all-show-ans-btn');
 if (kanjiAllShowAnsBtn) {
   kanjiAllShowAnsBtn.addEventListener('click', () => {
