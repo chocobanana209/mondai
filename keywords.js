@@ -57,7 +57,6 @@ function openTableConfigModal(tableData) {
   const modal = document.getElementById('table-config-modal');
   if (modal) modal.classList.remove('hidden');
 
-  // 単元絞り込み用セレクトボックスがある場合の動的生成
   const unitSelect = document.getElementById('config-scope-unit-select');
   if (unitSelect) {
     const units = [...new Set((tableData.items || []).map(i => i.unit).filter(Boolean))];
@@ -87,7 +86,6 @@ if (startTableExerciseBtn) {
     const scope = document.getElementById('config-scope-select')?.value || 'all';
     const unitScope = document.getElementById('config-scope-unit-select')?.value || 'all';
     
-    // 制限数の取得（入力欄またはセレクトボックス両対応）
     const limitInput = document.getElementById('config-limit-input');
     const limitSelect = document.getElementById('config-limit-select');
     let limit = 10;
@@ -302,7 +300,8 @@ if (cancelTableRegBtn) {
   cancelTableRegBtn.addEventListener('click', closeTableRegisterForm);
 }
 
-function openTableRegisterForm(tableData = null) {
+// 修正: export を追加しました
+export function openTableRegisterForm(tableData = null) {
   ['view-mode-container', 'collection-player-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container', 'timeline-register-form-container', 'kanji-register-form-container'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
