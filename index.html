@@ -5,75 +5,192 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#17233e">
+
   <title>MONDAI - 一問一答学習アプリ</title>
+
+  <!-- ファビコン -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2317233e'/%3E%3Ctext x='32' y='45' font-size='38' font-weight='bold' text-anchor='middle' fill='white'%3EM%3C/text%3E%3C/svg%3E">
+
+  <!-- CSS -->
   <link rel="stylesheet" href="./style.css">
 </head>
+
 <body>
 
-<header class="header">
-  <a href="./" class="logo">MONDAI<span> STUDY SYSTEM</span></a>
-  <div id="account"></div>
-</header>
+  <!-- ヘッダー -->
+  <header class="header">
+    <a href="./" class="logo">
+      MONDAI<span> STUDY SYSTEM</span>
+    </a>
 
-<div id="notice" role="status" aria-live="polite"></div>
+    <div id="account"></div>
+  </header>
 
-<section id="auth-screen" class="auth-screen">
-  <div class="auth-card">
-    <h1>MONDAI</h1>
-    <p class="muted">知識を積み重ねる、一問一答。</p>
-    <form id="auth-form">
-      <label>メールアドレス
-        <input id="email" type="email" autocomplete="email" required>
-      </label>
-      <label>パスワード
-        <input id="password" type="password"
-          autocomplete="current-password" minlength="6" required>
-      </label>
-      <button type="submit">ログイン</button>
-      <button type="button" id="register" class="secondary">新規登録</button>
-      <button type="button" id="reset-password" class="ghost">パスワードを忘れた場合</button>
-    </form>
-  </div>
-</section>
+  <!-- 通知 -->
+  <div id="notice" role="status" aria-live="polite"></div>
 
-<section id="profile-screen" class="auth-screen" hidden>
-  <div class="auth-card">
-    <h2>ニックネーム設定</h2>
-    <p>他のユーザーとのデッキ共有に使用します。本名などの個人情報は避けてください。</p>
-    <form id="profile-form">
-      <label>ニックネーム
-        <input id="nickname" minlength="2" maxlength="24" required>
-      </label>
-      <button type="submit">登録する</button>
-    </form>
-  </div>
-</section>
+  <!-- ログイン画面 -->
+  <section id="auth-screen" class="auth-screen">
+    <div class="auth-card">
 
-<div id="app-screen" class="layout" hidden>
-  <aside class="sidebar" id="navigation">
-    <div class="nav-label">LIBRARY</div>
-    <button data-page="home">ホーム</button>
-    <button data-page="mine">マイデッキ</button>
-    <button data-page="public">公開デッキ</button>
-    <button data-page="shared">共有デッキ</button>
-    <button data-page="settings">設定</button>
-  </aside>
-  <main id="main"></main>
-</div>
+      <h1>MONDAI</h1>
 
-<template id="deck-template">
-  <article class="deck-card">
-    <div class="deck-heading">
-      <h3 class="deck-name"></h3>
-      <span class="visibility"></span>
+      <p class="muted">
+        知識を積み重ねる、一問一答。
+      </p>
+
+      <form id="auth-form">
+
+        <label>
+          メールアドレス
+          <input
+            id="email"
+            type="email"
+            autocomplete="email"
+            required
+          >
+        </label>
+
+        <label>
+          パスワード
+          <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            minlength="6"
+            required
+          >
+        </label>
+
+        <button type="submit">
+          ログイン
+        </button>
+
+        <button
+          type="button"
+          id="register"
+          class="secondary"
+        >
+          新規登録
+        </button>
+
+        <button
+          type="button"
+          id="reset-password"
+          class="ghost"
+        >
+          パスワードを忘れた場合
+        </button>
+
+      </form>
+
     </div>
-    <p class="deck-meta muted"></p>
-    <div class="deck-actions"></div>
-  </article>
-</template>
+  </section>
 
-<footer class="footer">MONDAI / Study System</footer>
+  <!-- ニックネーム設定画面 -->
+  <section
+    id="profile-screen"
+    class="auth-screen"
+    hidden
+  >
+    <div class="auth-card">
 
-<script type="module" src="./script.js"></script>
+      <h2>ニックネーム設定</h2>
+
+      <p>
+        他のユーザーとのデッキ共有に使用します。
+        本名などの個人情報は避けてください。
+      </p>
+
+      <form id="profile-form">
+
+        <label>
+          ニックネーム
+          <input
+            id="nickname"
+            minlength="2"
+            maxlength="24"
+            required
+          >
+        </label>
+
+        <button type="submit">
+          登録する
+        </button>
+
+      </form>
+
+    </div>
+  </section>
+
+  <!-- メインアプリ -->
+  <div id="app-screen" class="layout" hidden>
+
+    <!-- サイドバー -->
+    <aside class="sidebar" id="navigation">
+
+      <div class="nav-label">
+        LIBRARY
+      </div>
+
+      <button data-page="home">
+        ホーム
+      </button>
+
+      <button data-page="mine">
+        マイデッキ
+      </button>
+
+      <button data-page="public">
+        公開デッキ
+      </button>
+
+      <button data-page="shared">
+        共有デッキ
+      </button>
+
+      <button data-page="settings">
+        設定
+      </button>
+
+    </aside>
+
+    <!-- メインコンテンツ -->
+    <main id="main"></main>
+
+  </div>
+
+  <!-- デッキカードのテンプレート -->
+  <template id="deck-template">
+
+    <article class="deck-card">
+
+      <div class="deck-heading">
+
+        <h3 class="deck-name"></h3>
+
+        <span class="visibility"></span>
+
+      </div>
+
+      <p class="deck-meta muted"></p>
+
+      <div class="deck-actions"></div>
+
+    </article>
+
+  </template>
+
+  <!-- フッター -->
+  <footer class="footer">
+    MONDAI / Study System
+  </footer>
+
+  <!-- JavaScript：キャッシュ対策済み -->
+  <script
+    type="module"
+    src="./script.js?v=20261124-03"
+  ></script>
+
 </body>
 </html>
