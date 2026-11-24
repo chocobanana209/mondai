@@ -617,3 +617,348 @@ td textarea {
     padding-left: 12px;
   }
 }
+
+
+/* ==========================================
+   MONDAI v0.4
+   固定ヘッダー・固定メニュー・固定操作バー
+========================================== */
+
+:root {
+  --app-header-height: 60px;
+  --app-nav-height: 56px;
+  --quiz-footer-height: 88px;
+}
+
+html {
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+#app-screen:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+
+  overflow: hidden;
+}
+
+/* ヘッダー */
+
+#app-screen > header {
+  flex: 0 0 var(--app-header-height);
+
+  height: var(--app-header-height);
+  min-height: var(--app-header-height);
+  max-height: var(--app-header-height);
+
+  box-sizing: border-box;
+}
+
+/* メニューバー */
+
+#navigation {
+  display: flex;
+  flex-direction: row;
+
+  flex: 0 0 var(--app-nav-height);
+
+  height: var(--app-nav-height);
+  min-height: var(--app-nav-height);
+  max-height: var(--app-nav-height);
+
+  align-items: center;
+  justify-content: flex-start;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  white-space: nowrap;
+  box-sizing: border-box;
+
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+#navigation::-webkit-scrollbar {
+  display: none;
+}
+
+#navigation [data-page] {
+  flex: 0 0 auto;
+
+  width: auto;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+
+  padding: 0 15px;
+
+  white-space: nowrap;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  box-sizing: border-box;
+}
+
+/* 中央コンテンツ */
+
+#main {
+  flex: 1 1 0;
+  min-height: 0;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+
+  box-sizing: border-box;
+}
+
+/* 演習画面 */
+
+body.quiz-mode {
+  overflow: hidden;
+}
+
+body.quiz-mode #main {
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+  min-height: 0;
+
+  padding-bottom: 0;
+}
+
+body.quiz-mode #main > .quiz {
+  flex: 1 1 0;
+
+  display: flex;
+  flex-direction: column;
+
+  min-height: 0;
+
+  width: 100%;
+
+  margin: 0 auto;
+  padding: 0;
+
+  overflow: hidden;
+
+  box-sizing: border-box;
+}
+
+/* 問題・解答のスクロール領域 */
+
+.quiz-scroll-area {
+  flex: 1 1 0;
+
+  min-height: 0;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+
+  padding-bottom: 16px;
+}
+
+.quiz-scroll-area .toolbar {
+  margin-bottom: 12px;
+}
+
+.quiz-scroll-area .quiz-card {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+.quiz-question {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.answer-text,
+.explanation {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* 操作ボタンを画面下に固定 */
+
+body.quiz-mode .quiz-buttons {
+  flex: 0 0 auto;
+
+  display: flex;
+  align-items: stretch;
+
+  gap: 10px;
+
+  width: 100%;
+
+  margin: 0;
+  padding: 10px 0;
+
+  padding-bottom:
+    calc(10px + env(safe-area-inset-bottom, 0px));
+
+  background: var(--bg, #f2f5f9);
+
+  box-sizing: border-box;
+
+  z-index: 20;
+}
+
+body.quiz-mode .quiz-buttons > button {
+  flex: 1 1 0;
+
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+
+  margin: 0;
+
+  font-size: 17px;
+  font-weight: 700;
+
+  white-space: nowrap;
+
+  touch-action: manipulation;
+}
+
+/* 同期ステータス */
+
+.quiz-sync-status {
+  flex: 0 0 auto;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  min-height: 22px;
+
+  padding: 5px 2px;
+
+  font-size: 12px;
+  color: #728197;
+}
+
+.quiz-sync-status.is-synced {
+  color: #218653;
+}
+
+.quiz-sync-status.is-pending {
+  color: #8b681d;
+}
+
+.quiz-sync-status.is-error {
+  color: #bd4141;
+}
+
+/* 成績表示 */
+
+.quiz-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+
+  gap: 10px 20px;
+
+  padding: 10px 12px;
+
+  background: #f4f6fa;
+  border: 1px solid var(--border, #d8dfe9);
+  border-radius: 7px;
+
+  font-size: 15px;
+  font-weight: 600;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.quiz-stats-personal,
+.quiz-stats-total {
+  white-space: nowrap;
+}
+
+.quiz-correct {
+  color: #218653;
+  font-weight: 700;
+}
+
+.quiz-incorrect {
+  color: #bd4141;
+  font-weight: 700;
+}
+
+.quiz-stats-total {
+  padding-left: 16px;
+  border-left: 1px solid #d8dfe9;
+}
+
+/* スマートフォン */
+
+@media (max-width: 600px) {
+  :root {
+    --app-header-height: 56px;
+    --app-nav-height: 52px;
+  }
+
+  #navigation [data-page] {
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+
+    padding: 0 13px;
+    font-size: 13px;
+  }
+
+  .quiz-scroll-area .toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .quiz-scroll-area .toolbar strong {
+    font-size: 13px;
+  }
+
+  .quiz-question {
+    font-size: 19px;
+    min-height: 100px;
+    padding: 20px 0;
+  }
+
+  .quiz-scroll-area .quiz-card {
+    padding: 16px;
+  }
+
+  .quiz-stats {
+    font-size: 14px;
+    gap: 8px 12px;
+  }
+
+  .quiz-stats-total {
+    padding-left: 12px;
+  }
+
+  .answer-text {
+    font-size: 24px;
+  }
+}
