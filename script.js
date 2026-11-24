@@ -36,7 +36,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
+const db = getFirestore(firebaseApp,"mondai");
 /* ==========================================
    共通処理
 ========================================== */
