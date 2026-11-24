@@ -1,319 +1,79 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MONDAI</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#17233e">
+  <title>MONDAI - 一問一答学習アプリ</title>
   <link rel="stylesheet" href="./style.css">
-  <style>
-    .kanji-target-underline {
-      text-decoration: underline;
-      text-decoration-thickness: 2px;
-      text-underline-offset: 4px;
-      color: #1e3a8a;
-    }
-  </style>
 </head>
-<body class="bg-slate-100 text-slate-800 h-[100dvh] flex flex-col overflow-hidden font-sans">
+<body>
 
-  <!-- ヘッダー -->
-  <header class="bg-white border-b px-4 py-2 flex justify-between items-center shrink-0 shadow-xs">
-    <div class="flex items-center gap-3">
-      <button id="toggle-sidebar-btn" class="p-1.5 rounded hover:bg-slate-100 text-slate-600">☰</button>
-      <h1 class="font-bold text-base text-blue-600 flex items-center gap-1.5">MONDAI</h1>
-    </div>
-    <div class="flex items-center gap-3">
-      <div id="auth-status" class="px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] font-semibold">未ログイン</div>
-      <div id="user-info" class="hidden flex items-center gap-2">
-        <img id="user-photo" class="w-7 h-7 rounded-full border" alt=""/>
-        <span id="user-name" class="text-xs font-medium hidden sm:inline"></span>
-      </div>
-      <button id="login-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold transition shadow-xs">ログイン</button>
-      <button id="logout-btn" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded text-xs font-bold transition">ログアウト</button>
-      <button id="header-menu-btn" class="hidden p-1.5 rounded hover:bg-slate-100 text-slate-600 text-sm" title="正誤記録・メニュー">⚙️</button>
-    </div>
-  </header>
+<header class="header">
+  <a href="./" class="logo">MONDAI<span> STUDY SYSTEM</span></a>
+  <div id="account"></div>
+</header>
 
-  <!-- メインレイアウト -->
-  <div id="main-content" class="flex-1 flex relative overflow-hidden opacity-50 pointer-events-none transition-opacity">
-    
-    <!-- サイドバー -->
-    <aside id="sidebar" class="w-80 max-w-full bg-white border-r flex flex-col shrink-0 transition-all duration-200 absolute md:relative inset-y-0 left-0 z-30 md:z-auto shadow-lg md:shadow-none">
-      <div class="p-2 border-b bg-slate-50 flex gap-1">
-        <button id="nav-docs" class="flex-1 py-1 font-bold text-blue-600 bg-white rounded shadow-sm text-[11px]">問題</button>
-        <button id="nav-collections" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">問題集</button>
-        <button id="nav-tables" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">一問一答</button>
-        <button id="nav-kanji" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">漢字</button>
-        <button id="nav-timeline" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">年表</button>
-        <button id="nav-exams" class="flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]">試験</button>
-      </div>
+<div id="notice" role="status" aria-live="polite"></div>
 
-      <div class="p-2 border-b bg-slate-50/50 flex gap-2 text-xs">
-        <button id="sidebar-add-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition text-xs shadow-xs flex items-center justify-center gap-1">
-          <span>＋ 新しく追加</span>
-        </button>
-        <button id="nav-refresh" class="bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold py-1.5 px-3 rounded border border-amber-200 transition flex items-center justify-center" title="リフレッシュモード">🔄</button>
-      </div>
-
-      <div id="unit-filter-container" class="hidden px-3 py-2 bg-slate-100/70 border-b text-xs">
-        <div class="font-bold text-slate-600 mb-1">単元で絞り込み (非表示切替):</div>
-        <div id="unit-checkboxes" class="flex flex-wrap gap-2 text-[11px]"></div>
-      </div>
-
-      <div id="sidebar-list" class="flex-1 overflow-y-auto p-2 space-y-1.5"></div>
-
-      <div class="p-2 border-t bg-slate-50">
-        <button id="open-trash-modal-btn" class="w-full py-1 text-slate-500 hover:text-red-600 text-xs font-medium rounded hover:bg-slate-100 transition flex items-center justify-center gap-1">
-          🗑️ ゴミ箱を見る
-        </button>
-      </div>
-    </aside>
-
-    <!-- コンテンツ表示エリア -->
-    <main class="flex-1 bg-slate-50 flex flex-col overflow-hidden relative w-full">
-
-      <!-- 1. 通常閲覧・演習モードコンテナ -->
-      <div id="view-mode-container" class="flex-1 flex flex-col overflow-hidden p-3 sm:p-4">
-        <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden">
-          <div class="p-3 border-b flex justify-between items-center bg-slate-50">
-            <h2 id="doc-title" class="font-bold text-sm text-slate-700 truncate">左のリストから問題を選択してください</h2>
-            <button id="edit-current-btn" class="hidden bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1 rounded text-xs font-bold transition">編集</button>
-          </div>
-          <div id="question-display-area" class="flex-1 p-6 overflow-y-auto">
-            <div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>
-          </div>
-          <div id="answer-pane" class="hidden border-t bg-amber-50/40 p-4 max-h-72 overflow-y-auto">
-            <div class="flex justify-between items-center mb-2">
-              <span class="font-bold text-xs text-amber-800">💡 解答・解説</span>
-              <button id="close-answer-pane-btn" class="text-slate-400 hover:text-slate-600 text-xs">✕ 閉じる</button>
-            </div>
-            <div id="answer-display-area"></div>
-          </div>
-          <div class="p-3 border-t bg-white flex justify-between items-center">
-            <button id="toggle-answer-pane-btn" class="hidden bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-xs">💡 解答解説を表示</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 2. 一問一答 エディタ画面 -->
-      <div id="table-register-form-container" class="hidden absolute inset-0 bg-white z-20 flex flex-col overflow-hidden">
-        <div class="p-3 border-b bg-slate-50 flex justify-between items-center shrink-0">
-          <div class="flex items-center gap-3">
-            <h2 class="font-bold text-sm text-emerald-800">一問一答表エディタ</h2>
-            <input type="hidden" id="editing-table-id"/>
-            <input type="text" id="table-name-input" placeholder="タイトル" class="border rounded px-2 py-1 text-xs w-60 font-bold"/>
-            <input type="text" id="table-subject-input" placeholder="教科" class="border rounded px-2 py-1 text-xs w-28"/>
-            <input type="text" id="table-desc-input" placeholder="説明・備考" class="border rounded px-2 py-1 text-xs w-48"/>
-            <input type="text" id="table-importances-input" value="高, 中, 低" class="border rounded px-2 py-1 text-xs w-32"/>
-          </div>
-          <div class="flex gap-2">
-            <button id="reset-col-width-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded text-xs font-bold transition">列幅リセット</button>
-            <button id="cancel-table-register-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-xs">完了・一覧へ</button>
-          </div>
-        </div>
-        <div class="flex-1 overflow-auto p-4">
-          <table id="qa-spread-table" class="w-full border-collapse text-xs bg-white shadow-xs rounded">
-            <thead>
-              <tr class="bg-emerald-100 text-emerald-900 border-b">
-                <th class="p-2 text-center resizable-th" data-col="drag"><span class="truncate">並替</span><div class="resizer"></div></th>
-                <th class="p-2 text-center resizable-th" data-col="index"><span class="truncate">#</span><div class="resizer"></div></th>
-                <th class="p-2 resizable-th" data-col="unit"><span class="truncate">単元名</span><div class="resizer"></div></th>
-                <th class="p-2 resizable-th" data-col="question"><span class="truncate">問題</span><div class="resizer"></div></th>
-                <th class="p-2 text-center resizable-th" data-col="qimg"><span class="truncate">画像</span><div class="resizer"></div></th>
-                <th class="p-2 resizable-th" data-col="answer"><span class="truncate">解答</span><div class="resizer"></div></th>
-                <th class="p-2 resizable-th" data-col="wrong"><span class="truncate">誤答</span><div class="resizer"></div></th>
-                <th class="p-2 text-center resizable-th" data-col="cimg"><span class="truncate">選択肢画像</span><div class="resizer"></div></th>
-                <th class="p-2 text-center resizable-th" data-col="imp"><span class="truncate">重要度</span><div class="resizer"></div></th>
-                <th class="p-2 resizable-th" data-col="exp"><span class="truncate">解説</span><div class="resizer"></div></th>
-                <th class="p-2 text-center resizable-th" data-col="action"><span class="truncate">🗑️</span></th>
-              </tr>
-            </thead>
-            <tbody id="qa-table-tbody"></tbody>
-          </table>
-          <button id="add-qa-row-btn" class="mt-3 w-full py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded font-bold text-xs transition">+ 行を追加</button>
-        </div>
-      </div>
-
-      <!-- 3. 漢字 登録・編集エディタ画面 -->
-      <div id="kanji-register-form-container" class="hidden absolute inset-0 bg-white z-20 flex flex-col overflow-hidden">
-        <div class="p-3 border-b bg-slate-50 flex justify-between items-center shrink-0">
-          <div class="flex items-center gap-3">
-            <h2 class="font-bold text-sm text-amber-800">漢字問題エディタ</h2>
-            <input type="hidden" id="editing-kanji-id"/>
-            <input type="text" id="kanji-name-input" placeholder="タイトル" class="border rounded px-2 py-1 text-xs w-60 font-bold"/>
-            <input type="text" id="kanji-subject-input" placeholder="教科" class="border rounded px-2 py-1 text-xs w-28"/>
-            <input type="text" id="kanji-desc-input" placeholder="説明・備考" class="border rounded px-2 py-1 text-xs w-48"/>
-          </div>
-          <div class="flex gap-2">
-            <button id="save-kanji-doc-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-xs">保存する</button>
-            <button id="cancel-kanji-register-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-1.5 rounded text-xs font-bold transition">完了・一覧へ</button>
-          </div>
-        </div>
-        <div class="flex-1 overflow-auto p-4">
-          <table class="w-full border-collapse text-xs bg-white shadow-xs rounded">
-            <thead>
-              <tr class="bg-amber-100 text-amber-900 border-b">
-                <th class="p-2 text-center w-10">並替</th>
-                <th class="p-2 text-center w-10">#</th>
-                <th class="p-2 w-32">単元名</th>
-                <th class="p-2">文章全体</th>
-                <th class="p-2 w-36">傍線部(漢字)</th>
-                <th class="p-2 w-36">読み仮名</th>
-                <th class="p-2 w-28 text-center">出題形式</th>
-                <th class="p-2 text-center w-20">操作</th>
-              </tr>
-            </thead>
-            <tbody id="kanji-table-tbody"></tbody>
-          </table>
-          <button id="add-kanji-row-btn" class="mt-3 w-full py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 rounded font-bold text-xs transition">+ 文章問題を追加</button>
-        </div>
-      </div>
-
-      <!-- 4. 年表 エディタ画面 -->
-      <div id="timeline-register-form-container" class="hidden absolute inset-0 bg-white z-20 flex flex-col overflow-hidden">
-        <div class="p-3 border-b bg-slate-50 flex justify-between items-center shrink-0">
-          <div class="flex items-center gap-3">
-            <h2 class="font-bold text-sm text-purple-800">年表エディタ</h2>
-            <input type="hidden" id="editing-timeline-id"/>
-            <input type="text" id="timeline-name-input" placeholder="タイトル" class="border rounded px-2 py-1 text-xs w-60 font-bold"/>
-            <input type="text" id="timeline-subject-input" placeholder="教科" class="border rounded px-2 py-1 text-xs w-28"/>
-          </div>
-          <div class="flex gap-2">
-            <button id="save-timeline-doc-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-xs">保存する</button>
-            <button id="cancel-timeline-register-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-1.5 rounded text-xs font-bold transition">完了・一覧へ</button>
-          </div>
-        </div>
-        <div class="flex-1 overflow-auto p-4">
-          <table class="w-full border-collapse text-xs bg-white shadow-xs rounded">
-            <thead>
-              <tr class="bg-purple-100 text-purple-900 border-b">
-                <th class="p-2 text-center w-10">並替</th>
-                <th class="p-2 text-center w-10">#</th>
-                <th class="p-2 w-32">年</th>
-                <th class="p-2 w-20 text-center">月</th>
-                <th class="p-2 w-20 text-center">日</th>
-                <th class="p-2">出来事の内容</th>
-                <th class="p-2 text-center w-16">削除</th>
-              </tr>
-            </thead>
-            <tbody id="timeline-table-tbody"></tbody>
-          </table>
-          <button id="add-timeline-row-btn" class="mt-3 w-full py-2 bg-purple-50 hover:bg-purple-100 border border-purple-300 text-purple-800 rounded font-bold text-xs transition">+ 年表項目を追加</button>
-        </div>
-      </div>
-
-      <!-- 5. 一問一答 プレイヤー画面 -->
-      <div id="table-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-2 sm:p-6">
-        <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
-          <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-emerald-50 shrink-0">
-            <div>
-              <span id="table-item-unit-badge" class="px-2 py-0.5 bg-emerald-200 text-emerald-900 rounded font-bold text-[10px] mr-2">単元</span>
-              <span id="table-loop-badge" class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">通常周回</span>
-            </div>
-            <div id="table-progress-count" class="font-bold text-xs text-emerald-900">問題 1 / 10</div>
-            <button id="exit-table-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
-          </div>
-
-          <div id="table-exercise-content" class="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
-            <div id="t-ex-question" class="text-base font-bold text-slate-800 leading-relaxed"></div>
-            <div id="t-ex-q-image-area"></div>
-            <div id="t-ex-choices-area" class="hidden space-y-2 pt-2"></div>
-
-            <div id="t-ex-answer-area" class="hidden space-y-3 pt-4 border-t">
-              <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                <span class="text-xs font-bold text-emerald-800 block mb-1">正解：</span>
-                <div id="t-ex-answer" class="text-sm font-bold text-emerald-900"></div>
-              </div>
-              <div class="p-3 bg-slate-50 rounded-lg border">
-                <span class="text-xs font-bold text-slate-600 block mb-1">解説：</span>
-                <div id="t-ex-explanation" class="text-xs text-slate-700"></div>
-              </div>
-            </div>
-          </div>
-
-          <div id="table-exercise-result" class="hidden flex-1 p-8 flex flex-col items-center justify-center text-center space-y-4">
-            <div class="text-4xl">🎉</div>
-            <h3 class="font-bold text-lg text-slate-800">お疲れ様でした！</h3>
-            <p id="table-result-summary" class="text-xs text-slate-600"></p>
-            <button id="restart-table-ex-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg font-bold text-xs shadow-xs transition">もう一度演習する</button>
-          </div>
-
-          <div class="p-3 sm:p-4 border-t bg-white shrink-0">
-            <button id="t-ex-show-ans-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">解答を表示</button>
-            <button id="t-ex-submit-choices-btn" class="hidden w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">解答する</button>
-            <div id="t-ex-grade-buttons" class="hidden flex gap-3 w-full">
-              <button id="t-ex-incorrect-btn" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">❌ 不正解</button>
-              <button id="t-ex-correct-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg text-xs font-bold transition shadow-xs">⭕ 正解</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 6. 漢字 プレイヤー画面 -->
-      <div id="kanji-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-2 sm:p-6">
-        <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
-          <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-amber-50 shrink-0">
-            <div class="flex items-center gap-2">
-              <span id="kanji-loop-badge" class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">通常周回</span>
-              <span id="kanji-progress-count" class="font-bold text-xs text-amber-900">全 0 文章</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <button id="kanji-all-show-ans-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-xs font-bold transition shadow-xs">全解答を表示</button>
-              <button id="exit-kanji-player-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
-            </div>
-          </div>
-
-          <div id="kanji-exercise-content" class="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
-            <div id="kanji-all-passages-container" class="space-y-4"></div>
-          </div>
-
-          <div id="kanji-exercise-result" class="hidden flex-1 p-8 flex flex-col items-center justify-center text-center space-y-4">
-            <div class="text-4xl">🎉</div>
-            <h3 class="font-bold text-lg text-slate-800">漢字演習お疲れ様でした！</h3>
-            <p id="kanji-result-summary" class="text-xs text-slate-600"></p>
-            <button id="restart-kanji-ex-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-lg font-bold text-xs shadow-xs transition">もう一度演習する</button>
-          </div>
-
-          <div class="p-3 sm:p-4 border-t bg-white shrink-0 flex justify-between items-center">
-            <button id="kanji-finish-ex-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-bold transition shadow-xs">演習完了・次へ進む ➡</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 7. 問題集プレイ画面 -->
-      <div id="collection-player-container" class="hidden absolute inset-0 bg-slate-50 z-20 flex flex-col overflow-hidden p-2 sm:p-6">
-        <div class="bg-white rounded-xl border shadow-xs flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full">
-          <div class="p-3 sm:p-4 border-b flex justify-between items-center bg-blue-50 shrink-0">
-            <div>
-              <h3 id="collection-player-title" class="font-bold text-sm text-blue-900">問題集タイトル</h3>
-              <p id="collection-player-desc" class="text-[10px] text-blue-700"></p>
-            </div>
-            <div class="flex items-center gap-3">
-              <span id="coll-progress-badge" class="px-2.5 py-1 bg-blue-200 text-blue-900 rounded font-bold text-xs">1 / 5</span>
-              <button id="exit-collection-btn" class="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✕ 終了</button>
-            </div>
-          </div>
-          <div id="coll-q-display-area" class="flex-1 p-4 sm:p-6 overflow-y-auto"></div>
-          <div id="coll-answer-pane" class="hidden border-t bg-amber-50/40 p-4 max-h-60 overflow-y-auto">
-            <div class="flex justify-between items-center mb-2">
-              <span class="font-bold text-xs text-amber-800">💡 解答・解説</span>
-              <button id="close-coll-answer-pane-btn" class="text-slate-400 hover:text-slate-600 text-xs">✕ 閉じる</button>
-            </div>
-            <div id="coll-a-display-area"></div>
-          </div>
-          <div class="p-3 sm:p-4 border-t bg-white flex justify-between items-center shrink-0">
-            <button id="toggle-coll-answer-btn" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition shadow-xs">💡 解答解説を表示</button>
-            <div class="flex gap-2">
-              <button id="coll-prev-btn" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold transition">◀ 前へ</button>
-              <button id="coll-next-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition shadow-xs">次へ ▶</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
+<section id="auth-screen" class="auth-screen">
+  <div class="auth-card">
+    <h1>MONDAI</h1>
+    <p class="muted">知識を積み重ねる、一問一答。</p>
+    <form id="auth-form">
+      <label>メールアドレス
+        <input id="email" type="email" autocomplete="email" required>
+      </label>
+      <label>パスワード
+        <input id="password" type="password"
+          autocomplete="current-password" minlength="6" required>
+      </label>
+      <button type="submit">ログイン</button>
+      <button type="button" id="register" class="secondary">新規登録</button>
+      <button type="button" id="reset-password" class="ghost">パスワードを忘れた場合</button>
+    </form>
   </div>
+</section>
 
-  <script type="module" src="./script.js"></script>
+<section id="profile-screen" class="auth-screen" hidden>
+  <div class="auth-card">
+    <h2>ニックネーム設定</h2>
+    <p>他のユーザーとのデッキ共有に使用します。本名などの個人情報は避けてください。</p>
+    <form id="profile-form">
+      <label>ニックネーム
+        <input id="nickname" minlength="2" maxlength="24" required>
+      </label>
+      <button type="submit">登録する</button>
+    </form>
+  </div>
+</section>
+
+<div id="app-screen" class="layout" hidden>
+  <aside class="sidebar" id="navigation">
+    <div class="nav-label">LIBRARY</div>
+    <button data-page="home">ホーム</button>
+    <button data-page="mine">マイデッキ</button>
+    <button data-page="public">公開デッキ</button>
+    <button data-page="shared">共有デッキ</button>
+    <button data-page="settings">設定</button>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<template id="deck-template">
+  <article class="deck-card">
+    <div class="deck-heading">
+      <h3 class="deck-name"></h3>
+      <span class="visibility"></span>
+    </div>
+    <p class="deck-meta muted"></p>
+    <div class="deck-actions"></div>
+  </article>
+</template>
+
+<footer class="footer">MONDAI / Study System</footer>
+
+<script type="module" src="./script.js"></script>
 </body>
 </html>
