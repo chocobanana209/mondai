@@ -1,4 +1,9 @@
 
+/* ==========================================
+   MONDAI v0.3
+   Firestore読み取り最適化版
+========================================== */
+
 import { initializeApp }
   from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
 
@@ -12,14 +17,22 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
 
 import {
-  getFirestore, collection, doc,
-  getDoc, getDocs, addDoc, updateDoc, deleteDoc,
-  query, where, runTransaction, writeBatch,
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  query,
+  where,
+  runTransaction,
+  writeBatch,
+  increment,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
 /* ==========================================
-   MONDAI v0.2
    Firebase設定
 ========================================== */
 
@@ -38,8 +51,30 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 
 /* ==========================================
-   共通処理
+   アプリ設定
 ========================================== */
+
+const VERSION = "0.3";
+
+const CONFIG = {
+  MAX_IMPORT: 1000,
+  IMPORT_BATCH_SIZE: 100,
+  MAX_CSV_BYTES: 5 * 1024 * 1024,
+
+  // デッキ情報：5分間
+  DECK_CACHE_MS: 5 * 60 * 1000,
+
+  // 問題データ：10分間
+  QUESTION_CACHE_MS: 10 * 60 * 1000,
+
+  // 問題別成績：5分間
+  STATS_CACHE_MS: 5 * 60 * 1000,
+
+  // デッキ一覧：3分間
+  LIST_CACHE_MS: 3 * 60 * 1000,
+
+  DEBUG: true
+};
 
 const $ = id => document.getElementById(id);
 const main = $("main");
@@ -49,6 +84,7 @@ let profile = null;
 let session = null;
 let noticeTimer;
 let busy = false;
+let authGeneration = 0;
 
 const visibilityNames = {
   public: "公開",
@@ -64,16 +100,192 @@ const columns = [
   ["importance", "重要度"]
 ];
 
+/* ==========================================
+   メモリキャッシュ
+========================================== */
+
+const cache = {
+  decks: new Map(),
+  questions: new Map(),
+  statistics: new Map(),
+  deckLists: new Map()
+};
+
+function getCache(map, key, ttl) {
+  const entry = map.get(key);
+
+  if (!entry) return undefined;
+
+  if (Date.now() - entry.time > ttl) {
+    map.delete(key);
+    return undefined;
+  }
+
+  return entry.value;
+}
+
+function setCache(map, key, value) {
+  map.set(key, {
+    value,
+    time: Date.now()
+  });
+
+  return value;
+}
+
+function clearCache() {
+  Object.values(cache).forEach(map => {
+    map.clear();
+  });
+
+  debugLog("CACHE", "全キャッシュを消去");
+}
+
+function invalidateDeck(id) {
+  cache.decks.delete(id);
+  cache.questions.delete(id);
+  cache.deckLists.clear();
+
+  for (const key of cache.statistics.keys()) {
+    if (key.startsWith(`${id}/`)) {
+      cache.statistics.delete(key);
+    }
+  }
+
+  debugLog("CACHE", `デッキ更新：${id}`);
+}
+
+function invalidateQuestions(id) {
+  cache.questions.delete(id);
+
+  debugLog("CACHE", `問題キャッシュ更新：${id}`);
+}
+
+function statsKey(deckId, questionId) {
+  return `${deckId}/${questionId}/${user.uid}`;
+}
+
+/* ==========================================
+   デバッグカウンター
+
+   注意：
+   Firebaseの実際の課金回数ではなく、
+   JavaScript側が明示的に要求した件数。
+========================================== */
+
+const debugCounters = {
+  readRequests: 0,
+  readDocuments: 0,
+  writeRequests: 0,
+  writeDocuments: 0,
+  cacheHits: 0
+};
+
+function debugLog(type, message, detail = "") {
+  if (!CONFIG.DEBUG) return;
+
+  console.log(
+    `[MONDAI ${VERSION}][${type}] ${message}`,
+    detail
+  );
+}
+
+function recordRead(label, count = 1) {
+  debugCounters.readRequests++;
+  debugCounters.readDocuments += count;
+
+  debugLog(
+    "READ",
+    `${label}：${count}件`,
+    { ...debugCounters }
+  );
+}
+
+function recordWrite(label, count = 1) {
+  debugCounters.writeRequests++;
+  debugCounters.writeDocuments += count;
+
+  debugLog(
+    "WRITE",
+    `${label}：${count}件`,
+    { ...debugCounters }
+  );
+}
+
+function recordCacheHit(label) {
+  debugCounters.cacheHits++;
+
+  debugLog("CACHE HIT", label);
+}
+
+function resetDebugCounters() {
+  for (const key of Object.keys(debugCounters)) {
+    debugCounters[key] = 0;
+  }
+
+  debugLog("DEBUG", "カウンターをリセット");
+}
+
+window.MONDAI_DEBUG = {
+  stats() {
+    console.table(debugCounters);
+    return { ...debugCounters };
+  },
+
+  reset() {
+    resetDebugCounters();
+  },
+
+  clearCache() {
+    clearCache();
+  }
+};
+
+/* ==========================================
+   Firestore読み取りラッパー
+========================================== */
+
+async function readDocument(ref, label) {
+  const snap = await getDoc(ref);
+
+  recordRead(label, 1);
+
+  return snap;
+}
+
+async function readCollection(ref, label) {
+  const snap = await getDocs(ref);
+
+  recordRead(
+    label,
+    Math.max(1, snap.size)
+  );
+
+  return snap;
+}
+
+/* ==========================================
+   共通UI
+========================================== */
+
 function el(tag, className = "", text = "") {
   const node = document.createElement(tag);
+
   if (className) node.className = className;
-  if (text !== "") node.textContent = text;
+
+  if (text !== "") {
+    node.textContent = text;
+  }
+
   return node;
 }
 
 function notify(message, error = false) {
   $("notice").textContent = message;
-  $("notice").className = error ? "error" : "";
+
+  $("notice").className =
+    error ? "error" : "";
+
   clearTimeout(noticeTimer);
 
   noticeTimer = setTimeout(() => {
@@ -87,18 +299,28 @@ function errorMessage(error) {
   const messages = {
     "auth/email-already-in-use":
       "このメールアドレスは登録済みです。",
+
     "auth/invalid-credential":
       "メールアドレスまたはパスワードが違います。",
+
     "auth/weak-password":
       "パスワードは6文字以上にしてください。",
+
     "auth/invalid-email":
       "メールアドレスが正しくありません。",
+
     "auth/too-many-requests":
       "試行回数が多すぎます。時間をおいてください。",
+
     "auth/network-request-failed":
       "ネットワークに接続できません。",
+
     "permission-denied":
       "アクセス権限がありません。",
+
+    "resource-exhausted":
+      "Firebaseの利用上限に達した可能性があります。",
+
     "unavailable":
       "通信できません。接続を確認してください。"
   };
@@ -113,6 +335,7 @@ function errorMessage(error) {
 
 async function safely(action) {
   if (busy) return;
+
   busy = true;
 
   try {
@@ -126,14 +349,19 @@ async function safely(action) {
 
 function button(text, action, className = "") {
   const b = el("button", className, text);
+
   b.type = "button";
 
   b.addEventListener("click", async () => {
     if (busy) return;
 
     b.disabled = true;
-    await safely(action);
-    b.disabled = false;
+
+    try {
+      await safely(action);
+    } finally {
+      b.disabled = false;
+    }
   });
 
   return b;
@@ -141,20 +369,26 @@ function button(text, action, className = "") {
 
 function field(labelText, control) {
   const label = el("label", "", labelText);
+
   label.append(control);
+
   return label;
 }
 
 function input(value = "", placeholder = "") {
   const node = el("input");
+
   node.value = value;
   node.placeholder = placeholder;
+
   return node;
 }
 
 function textarea(value = "") {
   const node = el("textarea");
+
   node.value = value;
+
   return node;
 }
 
@@ -163,11 +397,14 @@ function select(options, current) {
 
   for (const [value, text] of options) {
     const option = el("option", "", text);
+
     option.value = value;
+
     node.append(option);
   }
 
   node.value = current;
+
   return node;
 }
 
@@ -184,12 +421,15 @@ function showScreen(name) {
 function pageHeading(title, ...actions) {
   const heading = el("div", "page-heading");
 
-  heading.append(el("h1", "", title));
+  heading.append(
+    el("h1", "", title)
+  );
 
   const group = el("div", "actions");
-  group.append(...actions);
 
+  group.append(...actions);
   heading.append(group);
+
   return heading;
 }
 
@@ -218,6 +458,9 @@ function updateAccount() {
       }
 
       session = null;
+
+      clearCache();
+
       await signOut(auth);
     }, "secondary")
   );
@@ -232,7 +475,12 @@ function deckRef(id) {
 }
 
 function questionCollection(id) {
-  return collection(db, "decks", id, "questions");
+  return collection(
+    db,
+    "decks",
+    id,
+    "questions"
+  );
 }
 
 function questionRef(deckId, questionId) {
@@ -274,35 +522,141 @@ function isOwner(deck) {
 }
 
 function canEdit(deck) {
-  return isOwner(deck) ||
-    (deck.editorIds || []).includes(user.uid);
+  return (
+    !deck.deleted &&
+    (
+      isOwner(deck) ||
+      (deck.editorIds || []).includes(user.uid)
+    )
+  );
 }
 
-async function loadDeck(id) {
-  const snap = await getDoc(deckRef(id));
+/* ==========================================
+   デッキ取得・キャッシュ
+========================================== */
 
-  if (!snap.exists()) {
-    throw new Error("デッキが存在しません。");
+async function loadDeck(id, force = false) {
+  if (!force) {
+    const cached = getCache(
+      cache.decks,
+      id,
+      CONFIG.DECK_CACHE_MS
+    );
+
+    if (cached !== undefined) {
+      recordCacheHit("デッキ情報");
+      return cached;
+    }
   }
 
-  return {
+  const snap = await readDocument(
+    deckRef(id),
+    "デッキ情報"
+  );
+
+  if (
+    !snap.exists() ||
+    snap.data().deleted
+  ) {
+    throw new Error(
+      "デッキが存在しません。"
+    );
+  }
+
+  const deck = {
     ...snap.data(),
     id: snap.id
   };
+
+  return setCache(
+    cache.decks,
+    id,
+    deck
+  );
 }
 
-async function loadQuestions(id) {
-  const snap = await getDocs(questionCollection(id));
+/* ==========================================
+   問題取得・キャッシュ
+========================================== */
 
-  return snap.docs
-    .map(d => ({
-      ...d.data(),
-      id: d.id
-    }))
-    .sort((a, b) =>
-      a.position - b.position ||
-      a.id.localeCompare(b.id)
+function sortQuestions(questions) {
+  return questions.sort((a, b) =>
+    a.position - b.position ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+async function loadQuestions(id, force = false) {
+  if (!force) {
+    const cached = getCache(
+      cache.questions,
+      id,
+      CONFIG.QUESTION_CACHE_MS
     );
+
+    if (cached !== undefined) {
+      recordCacheHit(
+        `問題データ ${cached.length}問`
+      );
+
+      return cached;
+    }
+  }
+
+  const snap = await readCollection(
+    questionCollection(id),
+    "デッキ内の問題一括取得"
+  );
+
+  const questions = sortQuestions(
+    snap.docs
+      .map(d => ({
+        ...d.data(),
+        id: d.id
+      }))
+      .filter(q => !q.deleted)
+  );
+
+  return setCache(
+    cache.questions,
+    id,
+    questions
+  );
+}
+
+function appendCachedQuestions(id, additions) {
+  const existing = getCache(
+    cache.questions,
+    id,
+    CONFIG.QUESTION_CACHE_MS
+  );
+
+  if (existing === undefined) return;
+
+  setCache(
+    cache.questions,
+    id,
+    sortQuestions([
+      ...existing,
+      ...additions
+    ])
+  );
+}
+
+function updateCachedQuestion(
+  deckId,
+  questionId,
+  values
+) {
+  const entry = cache.questions.get(deckId);
+
+  if (!entry) return;
+
+  entry.value = entry.value.map(q =>
+    q.id === questionId
+      ? { ...q, ...values }
+      : q
+  ).filter(q => !q.deleted);
 }
 
 function normalizeNickname(value) {
@@ -342,7 +696,9 @@ $("auth-form").addEventListener("submit", event => {
 
 $("register").addEventListener("click", () => {
   safely(async () => {
-    if (!$("auth-form").reportValidity()) return;
+    if (!$("auth-form").reportValidity()) {
+      return;
+    }
 
     await createUserWithEmailAndPassword(
       auth,
@@ -364,7 +720,10 @@ $("reset-password").addEventListener("click", () => {
       );
     }
 
-    await sendPasswordResetEmail(auth, email);
+    await sendPasswordResetEmail(
+      auth,
+      email
+    );
 
     notify(
       "パスワード再設定メールの送信を受け付けました。"
@@ -373,22 +732,30 @@ $("reset-password").addEventListener("click", () => {
 });
 
 onAuthStateChanged(auth, async currentUser => {
+  const generation = ++authGeneration;
+
   user = currentUser;
   profile = null;
   session = null;
 
+  clearCache();
+  clearMain();
   updateAccount();
 
   if (!user) {
-    clearMain();
     showScreen("auth-screen");
     return;
   }
 
   try {
-    const snap = await getDoc(
-      doc(db, "profiles", user.uid)
+    const snap = await readDocument(
+      doc(db, "profiles", user.uid),
+      "ユーザープロフィール"
     );
+
+    if (generation !== authGeneration) {
+      return;
+    }
 
     if (!snap.exists()) {
       showScreen("profile-screen");
@@ -403,9 +770,15 @@ onAuthStateChanged(auth, async currentUser => {
     await navigate("home");
 
   } catch (error) {
-    errorMessage(error);
+    if (generation === authGeneration) {
+      errorMessage(error);
+    }
   }
 });
+
+/* ==========================================
+   ニックネーム登録
+========================================== */
 
 $("profile-form").addEventListener("submit", event => {
   event.preventDefault();
@@ -415,14 +788,28 @@ $("profile-form").addEventListener("submit", event => {
       $("nickname").value
     );
 
-    const nameRef = doc(db, "nicknames", nickname);
-    const profileRef = doc(db, "profiles", user.uid);
+    const nameRef = doc(
+      db,
+      "nicknames",
+      nickname
+    );
+
+    const profileRef = doc(
+      db,
+      "profiles",
+      user.uid
+    );
+
+    const currentUid = user.uid;
 
     await runTransaction(db, async tx => {
-      const [nameSnap, profileSnap] = await Promise.all([
-        tx.get(nameRef),
-        tx.get(profileRef)
-      ]);
+      const [nameSnap, profileSnap] =
+        await Promise.all([
+          tx.get(nameRef),
+          tx.get(profileRef)
+        ]);
+
+      recordRead("ニックネーム登録確認", 2);
 
       if (nameSnap.exists()) {
         throw new Error(
@@ -437,7 +824,7 @@ $("profile-form").addEventListener("submit", event => {
       }
 
       tx.set(nameRef, {
-        uid: user.uid
+        uid: currentUid
       });
 
       tx.set(profileRef, {
@@ -445,9 +832,12 @@ $("profile-form").addEventListener("submit", event => {
       });
     });
 
+    recordWrite("ニックネーム登録", 2);
+
     profile = { nickname };
 
     showScreen("app-screen");
+
     updateAccount();
 
     await navigate("home");
@@ -461,11 +851,15 @@ $("profile-form").addEventListener("submit", event => {
 ========================================== */
 
 $("navigation").addEventListener("click", event => {
-  const target = event.target.closest("[data-page]");
+  const target = event.target.closest(
+    "[data-page]"
+  );
 
   if (!target) return;
 
-  safely(() => navigate(target.dataset.page));
+  safely(() =>
+    navigate(target.dataset.page)
+  );
 });
 
 async function navigate(page) {
@@ -510,7 +904,7 @@ async function navigate(page) {
 }
 
 /* ==========================================
-   ホーム
+   ホーム画面
 ========================================== */
 
 function renderHome() {
@@ -518,6 +912,7 @@ function renderHome() {
 
   main.append(
     pageHeading("ホーム"),
+
     el(
       "p",
       "muted",
@@ -560,6 +955,10 @@ function renderHome() {
   main.append(grid);
 }
 
+/* ==========================================
+   設定・通信統計
+========================================== */
+
 function renderSettings() {
   clearMain();
 
@@ -567,8 +966,19 @@ function renderSettings() {
 
   panel.append(
     el("h2", "", "アカウント"),
-    el("p", "", `ニックネーム：${profile.nickname}`),
-    el("p", "", `メールアドレス：${user.email}`),
+
+    el(
+      "p",
+      "",
+      `ニックネーム：${profile.nickname}`
+    ),
+
+    el(
+      "p",
+      "",
+      `メールアドレス：${user.email}`
+    ),
+
     el(
       "p",
       "muted",
@@ -583,23 +993,135 @@ function renderSettings() {
           user.email
         );
 
-        notify("再設定メールを送信しました。");
+        notify(
+          "再設定メールを送信しました。"
+        );
       },
       "secondary"
     )
   );
 
+  const debugPanel = el("section", "panel");
+
+  debugPanel.append(
+    el("h2", "", "通信統計"),
+
+    el(
+      "p",
+      "muted",
+      "アプリが明示的に要求した読み取り・書き込み件数です。Firebaseの課金件数とは異なります。"
+    )
+  );
+
+  const display = el("div");
+
+  function drawCounters() {
+    display.replaceChildren();
+
+    const grid = el("div", "stats-grid");
+
+    const values = [
+      [
+        "読み取り要求",
+        debugCounters.readRequests
+      ],
+      [
+        "読み取り対象件数",
+        debugCounters.readDocuments
+      ],
+      [
+        "書き込み件数",
+        debugCounters.writeDocuments
+      ],
+      [
+        "キャッシュ利用",
+        debugCounters.cacheHits
+      ]
+    ];
+
+    for (const [title, count] of values) {
+      const box = el("div", "stat-box");
+
+      box.append(
+        el("div", "muted", title),
+        el(
+          "div",
+          "stat-number",
+          count.toLocaleString()
+        )
+      );
+
+      grid.append(box);
+    }
+
+    display.append(grid);
+  }
+
+  const actions = el("div", "actions");
+
+  actions.style.marginTop = "16px";
+
+  actions.append(
+    button("表示を更新", drawCounters),
+
+    button("カウンターをリセット", () => {
+      resetDebugCounters();
+      drawCounters();
+    }, "secondary"),
+
+    button("キャッシュを消去", () => {
+      clearCache();
+
+      notify(
+        "キャッシュを消去しました。保存済みのデータには影響しません。"
+      );
+    }, "secondary")
+  );
+
+  debugPanel.append(
+    display,
+    actions
+  );
+
+  drawCounters();
+
   main.append(
     pageHeading("設定"),
-    panel
+    panel,
+    debugPanel,
+
+    el(
+      "p",
+      "muted",
+      `MONDAI Version ${VERSION}`
+    )
   );
 }
 
 /* ==========================================
-   デッキ一覧
+   デッキ一覧取得
 ========================================== */
 
-async function fetchDecks(type) {
+async function fetchDecks(
+  type,
+  force = false
+) {
+  if (!force) {
+    const cached = getCache(
+      cache.deckLists,
+      type,
+      CONFIG.LIST_CACHE_MS
+    );
+
+    if (cached !== undefined) {
+      recordCacheHit(
+        `デッキ一覧：${type}`
+      );
+
+      return cached;
+    }
+  }
+
   const col = collection(db, "decks");
 
   let queries = [];
@@ -645,27 +1167,56 @@ async function fetchDecks(type) {
   }
 
   const snapshots = await Promise.all(
-    queries.map(q => getDocs(q))
+    queries.map(q =>
+      readCollection(
+        q,
+        `デッキ一覧：${type}`
+      )
+    )
   );
 
   const unique = new Map();
 
   for (const snap of snapshots) {
     for (const item of snap.docs) {
-      unique.set(item.id, {
+      const deck = {
         ...item.data(),
         id: item.id
-      });
+      };
+
+      if (deck.deleted) continue;
+
+      unique.set(item.id, deck);
+
+      setCache(
+        cache.decks,
+        item.id,
+        deck
+      );
     }
   }
 
-  return [...unique.values()].sort((a, b) =>
-    (b.updatedAt?.seconds || 0) -
-    (a.updatedAt?.seconds || 0)
+  const decks = [...unique.values()].sort(
+    (a, b) =>
+      (b.updatedAt?.seconds || 0) -
+      (a.updatedAt?.seconds || 0)
+  );
+
+  return setCache(
+    cache.deckLists,
+    type,
+    decks
   );
 }
 
-async function renderDeckList(type) {
+/* ==========================================
+   デッキ一覧画面
+========================================== */
+
+async function renderDeckList(
+  type,
+  force = false
+) {
   clearMain();
 
   const titles = {
@@ -685,8 +1236,19 @@ async function renderDeckList(type) {
     );
   }
 
+  actions.push(
+    button(
+      "更新",
+      () => renderDeckList(type, true),
+      "secondary"
+    )
+  );
+
   main.append(
-    pageHeading(titles[type], ...actions)
+    pageHeading(
+      titles[type],
+      ...actions
+    )
   );
 
   const search = input(
@@ -702,7 +1264,10 @@ async function renderDeckList(type) {
     el("p", "muted", "読み込み中…")
   );
 
-  const decks = await fetchDecks(type);
+  const decks = await fetchDecks(
+    type,
+    force
+  );
 
   function draw() {
     grid.replaceChildren();
@@ -738,21 +1303,25 @@ async function renderDeckList(type) {
       card.querySelector(".deck-name")
         .textContent = deck.name;
 
-      const visibility =
-        card.querySelector(".visibility");
+      const visibility = card.querySelector(
+        ".visibility"
+      );
 
       visibility.textContent =
         visibilityNames[deck.visibility];
 
-      visibility.classList.add(deck.visibility);
+      visibility.classList.add(
+        deck.visibility
+      );
 
       card.querySelector(".deck-meta")
         .textContent =
         `公開者：${deck.ownerName}` +
         (isOwner(deck) ? "（自分）" : "");
 
-      const group =
-        card.querySelector(".deck-actions");
+      const group = card.querySelector(
+        ".deck-actions"
+      );
 
       group.append(
         button(
@@ -803,7 +1372,7 @@ async function renderDeckList(type) {
 }
 
 /* ==========================================
-   デッキ作成・公開設定・共有設定
+   ニックネームからUIDを取得
 ========================================== */
 
 async function resolveNicknames(text) {
@@ -825,8 +1394,9 @@ async function resolveNicknames(text) {
   for (const name of names) {
     normalizeNickname(name);
 
-    const snap = await getDoc(
-      doc(db, "nicknames", name)
+    const snap = await readDocument(
+      doc(db, "nicknames", name),
+      "共有相手の検索"
     );
 
     if (!snap.exists()) {
@@ -846,8 +1416,14 @@ async function resolveNicknames(text) {
   return result;
 }
 
+/* ==========================================
+   デッキ作成・共有設定
+========================================== */
+
 async function renderDeckSettings(id = null) {
-  const deck = id ? await loadDeck(id) : null;
+  const deck = id
+    ? await loadDeck(id, true)
+    : null;
 
   if (deck && !isOwner(deck)) {
     throw new Error(
@@ -926,6 +1502,7 @@ async function renderDeckSettings(id = null) {
     field("公開範囲", visibility),
     editorField,
     viewerField,
+
     el(
       "p",
       "muted",
@@ -937,7 +1514,10 @@ async function renderDeckSettings(id = null) {
     button("保存", async () => {
       const deckName = name.value.trim();
 
-      if (!deckName || deckName.length > 100) {
+      if (
+        !deckName ||
+        deckName.length > 100
+      ) {
         throw new Error(
           "デッキ名は1〜100文字で入力してください。"
         );
@@ -975,7 +1555,13 @@ async function renderDeckSettings(id = null) {
       let savedId = id;
 
       if (id) {
-        await updateDoc(deckRef(id), data);
+        await updateDoc(
+          deckRef(id),
+          data
+        );
+
+        invalidateDeck(id);
+
       } else {
         const ref = await addDoc(
           collection(db, "decks"),
@@ -988,7 +1574,17 @@ async function renderDeckSettings(id = null) {
         );
 
         savedId = ref.id;
+
+        cache.deckLists.clear();
+
+        setCache(
+          cache.questions,
+          savedId,
+          []
+        );
       }
+
+      recordWrite("デッキ設定の保存");
 
       notify("デッキを保存しました。");
 
@@ -998,8 +1594,13 @@ async function renderDeckSettings(id = null) {
 
   main.append(panel);
 
+  /* 論理削除 */
+
   if (deck) {
-    const dangerPanel = el("section", "panel");
+    const dangerPanel = el(
+      "section",
+      "panel"
+    );
 
     dangerPanel.append(
       el("h3", "", "デッキの削除"),
@@ -1017,7 +1618,23 @@ async function renderDeckSettings(id = null) {
           return;
         }
 
-        await deleteDoc(deckRef(deck.id));
+        await updateDoc(
+          deckRef(deck.id),
+          {
+            name: "削除済み",
+            deleted: true,
+            visibility: "private",
+            editorIds: [],
+            editorNames: [],
+            viewerIds: [],
+            viewerNames: [],
+            updatedAt: serverTimestamp()
+          }
+        );
+
+        recordWrite("デッキの論理削除");
+
+        invalidateDeck(deck.id);
 
         notify("デッキを削除しました。");
 
@@ -1037,11 +1654,15 @@ function validateQuestion(values) {
   const data = {};
 
   for (const [key] of columns) {
-    data[key] = String(values[key] ?? "").trim();
+    data[key] = String(
+      values[key] ?? ""
+    ).trim();
   }
 
   if (!data.question || !data.answer) {
-    throw new Error("問題と解答は必須です。");
+    throw new Error(
+      "問題と解答は必須です。"
+    );
   }
 
   if (
@@ -1064,13 +1685,26 @@ function validateQuestion(values) {
 
 function questionControls(question = {}) {
   return {
-    question: textarea(question.question || ""),
-    answer: textarea(question.answer || ""),
-    explanation: textarea(question.explanation || ""),
-    unit: input(question.unit || "", "単元名"),
+    question: textarea(
+      question.question || ""
+    ),
+
+    answer: textarea(
+      question.answer || ""
+    ),
+
+    explanation: textarea(
+      question.explanation || ""
+    ),
+
+    unit: input(
+      question.unit || "",
+      "単元名"
+    ),
+
     importance: input(
       question.importance || "",
-      "例：1、2、3、4"
+      "例：1、2、3"
     )
   };
 }
@@ -1087,14 +1721,22 @@ function controlValues(controls) {
    問題編集画面
 ========================================== */
 
-async function renderEditor(id) {
-  const deck = await loadDeck(id);
+async function renderEditor(
+  id,
+  force = false
+) {
+  const deck = await loadDeck(id, force);
 
   if (!canEdit(deck)) {
-    throw new Error("編集権限がありません。");
+    throw new Error(
+      "編集権限がありません。"
+    );
   }
 
-  const questions = await loadQuestions(id);
+  const questions = await loadQuestions(
+    id,
+    force
+  );
 
   clearMain();
 
@@ -1108,6 +1750,20 @@ async function renderEditor(id) {
       ),
 
       button(
+        "更新",
+        () => {
+          if (!confirm(
+            "未保存の編集内容は失われます。更新しますか？"
+          )) {
+            return;
+          }
+
+          return renderEditor(id, true);
+        },
+        "secondary"
+      ),
+
+      button(
         "戻る",
         () => renderDeckList(
           isOwner(deck) ? "mine" : "shared"
@@ -1117,7 +1773,10 @@ async function renderEditor(id) {
     )
   );
 
+  /* CSVインポート */
+
   const tools = el("section", "panel");
+
   const fileInput = el("input");
 
   fileInput.type = "file";
@@ -1147,7 +1806,7 @@ async function renderEditor(id) {
 
       const file = fileInput.files[0];
 
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > CONFIG.MAX_CSV_BYTES) {
         throw new Error(
           "CSVファイルは5MB以下にしてください。"
         );
@@ -1178,18 +1837,26 @@ async function renderEditor(id) {
   );
 
   tools.append(csvActions);
+
   main.append(tools);
 
-  /* 手動追加 */
+  /* 問題の手動追加 */
 
-  const addPanel = el("section", "panel");
+  const addPanel = el(
+    "section",
+    "panel"
+  );
 
   addPanel.append(
     el("h2", "", "問題の追加")
   );
 
   const controls = questionControls();
-  const fields = el("div", "form-grid");
+
+  const fields = el(
+    "div",
+    "form-grid"
+  );
 
   for (const [key, title] of columns) {
     fields.append(
@@ -1208,17 +1875,29 @@ async function renderEditor(id) {
       const current = await loadQuestions(id);
 
       const position = current.reduce(
-        (max, q) => Math.max(max, q.position),
+        (max, q) => Math.max(
+          max,
+          q.position
+        ),
         0
       ) + 1;
 
-      await addDoc(
+      const values = {
+        ...data,
+        position
+      };
+
+      const ref = await addDoc(
         questionCollection(id),
-        {
-          ...data,
-          position
-        }
+        values
       );
+
+      recordWrite("問題の追加");
+
+      appendCachedQuestions(id, [{
+        ...values,
+        id: ref.id
+      }]);
 
       notify("問題を追加しました。");
 
@@ -1228,7 +1907,7 @@ async function renderEditor(id) {
 
   main.append(addPanel);
 
-  /* 登録済み問題の一覧 */
+  /* 問題一覧 */
 
   const list = el("section", "panel");
 
@@ -1248,14 +1927,17 @@ async function renderEditor(id) {
   const wrap = el("div", "table-wrap");
 
   list.append(search, wrap);
+
   main.append(list);
 
   function drawTable() {
     wrap.replaceChildren();
 
-    const keyword = search.value.toLowerCase();
+    const keyword = search.value
+      .toLowerCase();
 
     const table = el("table");
+
     const head = el("tr");
 
     for (const title of [
@@ -1267,10 +1949,13 @@ async function renderEditor(id) {
       "重要度",
       "操作"
     ]) {
-      head.append(el("th", "", title));
+      head.append(
+        el("th", "", title)
+      );
     }
 
     const thead = el("thead");
+
     thead.append(head);
     table.append(thead);
 
@@ -1286,6 +1971,7 @@ async function renderEditor(id) {
       }
 
       const row = el("tr");
+
       const controls = questionControls(q);
 
       row.append(
@@ -1312,7 +1998,15 @@ async function renderEditor(id) {
             values
           );
 
+          recordWrite("問題の編集");
+
           Object.assign(q, values);
+
+          updateCachedQuestion(
+            id,
+            q.id,
+            values
+          );
 
           notify("問題を保存しました。");
         }, "secondary"),
@@ -1324,8 +2018,30 @@ async function renderEditor(id) {
             return;
           }
 
-          await deleteDoc(
-            questionRef(id, q.id)
+          const values = {
+            question: "削除済み",
+            answer: "削除済み",
+            explanation: "",
+            unit: "",
+            importance: "",
+            deleted: true
+          };
+
+          await updateDoc(
+            questionRef(id, q.id),
+            values
+          );
+
+          recordWrite("問題の論理削除");
+
+          updateCachedQuestion(
+            id,
+            q.id,
+            values
+          );
+
+          cache.statistics.delete(
+            statsKey(id, q.id)
           );
 
           notify("問題を削除しました。");
@@ -1335,10 +2051,12 @@ async function renderEditor(id) {
       );
 
       row.append(operations);
+
       tbody.append(row);
     });
 
     table.append(tbody);
+
     wrap.append(table);
   }
 
@@ -1386,9 +2104,11 @@ function parseCSV(text) {
       ) {
         cell += '"';
         i++;
+
       } else if (char === '"') {
         quoted = false;
         closed = true;
+
       } else {
         cell += char;
       }
@@ -1451,20 +2171,23 @@ function parseCSV(text) {
 
 /* ==========================================
    CSVインポート
-   v0.2：最大1,000問
 ========================================== */
 
 async function importCSV(id, text) {
   const deck = await loadDeck(id);
 
   if (!canEdit(deck)) {
-    throw new Error("編集権限がありません。");
+    throw new Error(
+      "編集権限がありません。"
+    );
   }
 
   const rows = parseCSV(text);
 
   if (!rows.length) {
-    throw new Error("CSVにデータがありません。");
+    throw new Error(
+      "CSVにデータがありません。"
+    );
   }
 
   const first = rows[0].map(
@@ -1480,7 +2203,9 @@ async function importCSV(id, text) {
   ];
 
   const headerIndexes = aliases.map(names =>
-    first.findIndex(v => names.includes(v))
+    first.findIndex(
+      v => names.includes(v)
+    )
   );
 
   const hasHeader =
@@ -1501,30 +2226,34 @@ async function importCSV(id, text) {
     );
   }
 
-  if (dataRows.length > 1000) {
+  if (
+    dataRows.length >
+    CONFIG.MAX_IMPORT
+  ) {
     throw new Error(
-      "1回のインポートは1,000問までです。分割してください。"
+      "1回のインポートは1,000問までです。"
     );
   }
 
-  /* 全問題を事前検証 */
+  const data = dataRows.map(
+    (row, index) => {
+      try {
+        const values = {};
 
-  const data = dataRows.map((row, index) => {
-    try {
-      const values = {};
+        columns.forEach(([key], i) => {
+          values[key] =
+            row[indexes[i]] || "";
+        });
 
-      columns.forEach(([key], i) => {
-        values[key] = row[indexes[i]] || "";
-      });
+        return validateQuestion(values);
 
-      return validateQuestion(values);
-
-    } catch (error) {
-      throw new Error(
-        `データ${index + 1}行目：${error.message}`
-      );
+      } catch (error) {
+        throw new Error(
+          `データ${index + 1}行目：${error.message}`
+        );
+      }
     }
-  });
+  );
 
   if (!confirm(
     `${data.length}問を追加しますか？`
@@ -1532,55 +2261,87 @@ async function importCSV(id, text) {
     return;
   }
 
+  /* 取得済みの問題を再利用 */
+
   const existing = await loadQuestions(id);
 
   let position = existing.reduce(
-    (max, q) => Math.max(max, q.position),
+    (max, q) => Math.max(
+      max,
+      q.position
+    ),
     0
   );
 
-  /*
-    Firestoreへの書き込みを100問ずつ分割する。
-    インポート途中で失敗した場合は、
-    保存を確認できた問題数を通知する。
-  */
-
   let saved = 0;
 
-  for (let i = 0; i < data.length; i += 100) {
-    const chunk = data.slice(i, i + 100);
+  for (
+    let i = 0;
+    i < data.length;
+    i += CONFIG.IMPORT_BATCH_SIZE
+  ) {
+    const chunk = data.slice(
+      i,
+      i + CONFIG.IMPORT_BATCH_SIZE
+    );
+
     const batch = writeBatch(db);
+
+    const additions = [];
 
     for (const values of chunk) {
       const ref = doc(
         questionCollection(id)
       );
 
-      batch.set(ref, {
+      const newQuestion = {
         ...values,
         position: ++position
+      };
+
+      batch.set(
+        ref,
+        newQuestion
+      );
+
+      additions.push({
+        ...newQuestion,
+        id: ref.id
       });
     }
 
     try {
       await batch.commit();
+
       saved += chunk.length;
+
+      recordWrite(
+        "CSVインポート",
+        chunk.length
+      );
+
+      appendCachedQuestions(
+        id,
+        additions
+      );
 
       notify(
         `インポート中：${saved}/${data.length}問`
       );
 
     } catch (error) {
+      invalidateQuestions(id);
+
       console.error(error);
 
       throw new Error(
-        `インポート中断：${saved}/${data.length}問の保存を確認しました。登録済み問題を確認し、未登録分だけ再実行してください。(${error.code || error.message})`
+        `インポート中断：${saved}/${data.length}問の保存を確認しました。登録済み問題を確認してから再実行してください。`
       );
     }
   }
 
   notify(
-    `${data.length}問をインポートしました。`
+    `${saved}問をインポートしました。`
   );
 }
 
@@ -1590,8 +2351,6 @@ async function importCSV(id, text) {
 
 function csvEscape(value) {
   let text = String(value ?? "");
-
-  /* CSVの数式インジェクション対策 */
 
   if (
     /^\s*[=+\-@]/.test(text) ||
@@ -1606,9 +2365,11 @@ function csvEscape(value) {
 }
 
 function downloadCSV(filename, rows) {
-  const content = "\uFEFF" + rows.map(
-    row => row.map(csvEscape).join(",")
-  ).join("\r\n");
+  const content =
+    "\uFEFF" +
+    rows.map(
+      row => row.map(csvEscape).join(",")
+    ).join("\r\n");
 
   const blob = new Blob(
     [content],
@@ -1618,12 +2379,14 @@ function downloadCSV(filename, rows) {
   );
 
   const url = URL.createObjectURL(blob);
+
   const link = el("a");
 
   link.href = url;
   link.download = filename;
 
   document.body.append(link);
+
   link.click();
   link.remove();
 
@@ -1634,14 +2397,16 @@ function downloadCSV(filename, rows) {
 }
 
 async function exportDeck(id) {
-  const deck = await loadDeck(id);
+  // エクスポート時には最新の閲覧権限を確認
+  const deck = await loadDeck(id, true);
+
   const questions = await loadQuestions(id);
 
   const rows = [
     columns.map(x => x[1]),
 
-    ...questions.map(
-      q => columns.map(([key]) => q[key])
+    ...questions.map(q =>
+      columns.map(([key]) => q[key])
     )
   ];
 
@@ -1654,11 +2419,19 @@ async function exportDeck(id) {
 }
 
 /* ==========================================
-   チェックボックス・シャッフル
+   チェックボックス
 ========================================== */
 
-function checkItem(text, value, checked = true) {
-  const label = el("label", "check-item");
+function checkItem(
+  text,
+  value,
+  checked = true
+) {
+  const label = el(
+    "label",
+    "check-item"
+  );
+
   const checkbox = el("input");
 
   checkbox.type = "checkbox";
@@ -1683,7 +2456,11 @@ function checkedValues(container) {
 function shuffle(items) {
   const array = [...items];
 
-  for (let i = array.length - 1; i > 0; i--) {
+  for (
+    let i = array.length - 1;
+    i > 0;
+    i--
+  ) {
     const j = Math.floor(
       Math.random() * (i + 1)
     );
@@ -1699,15 +2476,28 @@ function shuffle(items) {
    演習条件の設定
 ========================================== */
 
-async function renderPracticeSetup(id) {
-  const deck = await loadDeck(id);
-  const questions = await loadQuestions(id);
+async function renderPracticeSetup(
+  id,
+  force = false
+) {
+  const deck = await loadDeck(id, force);
+
+  const questions = await loadQuestions(
+    id,
+    force
+  );
 
   clearMain();
 
   main.append(
     pageHeading(
       deck.name,
+
+      button(
+        "データ更新",
+        () => renderPracticeSetup(id, true),
+        "secondary"
+      ),
 
       button(
         "ホーム",
@@ -1743,11 +2533,15 @@ async function renderPracticeSetup(id) {
   ], "ordered");
 
   const units = [
-    ...new Set(questions.map(q => q.unit))
+    ...new Set(
+      questions.map(q => q.unit)
+    )
   ];
 
   const importance = [
-    ...new Set(questions.map(q => q.importance))
+    ...new Set(
+      questions.map(q => q.importance)
+    )
   ].sort((a, b) =>
     a.localeCompare(
       b,
@@ -1756,13 +2550,20 @@ async function renderPracticeSetup(id) {
     )
   );
 
-  const unitGroup = el("div", "check-group");
+  const unitGroup = el(
+    "div",
+    "check-group"
+  );
 
-  const importanceGroup =
-    el("div", "check-group");
+  const importanceGroup = el(
+    "div",
+    "check-group"
+  );
 
-  const customGroup =
-    el("div", "custom-list");
+  const customGroup = el(
+    "div",
+    "custom-list"
+  );
 
   for (const unit of units) {
     unitGroup.append(
@@ -1796,7 +2597,11 @@ async function renderPracticeSetup(id) {
   );
 
   const customArea = el("div");
-  const customActions = el("div", "actions");
+
+  const customActions = el(
+    "div",
+    "actions"
+  );
 
   const count = el("p", "muted");
 
@@ -1830,7 +2635,8 @@ async function renderPracticeSetup(id) {
     customArea.hidden =
       mode.value !== "custom";
 
-    const available = getSelected().length;
+    const available =
+      getSelected().length;
 
     const amount =
       order.value === "random20"
@@ -1864,16 +2670,25 @@ async function renderPracticeSetup(id) {
   );
 
   customArea.append(
-    el("h3", "", "出題する問題を選択"),
+    el(
+      "h3",
+      "",
+      "出題する問題を選択"
+    ),
+
     customActions,
     customGroup
   );
 
   panel.append(
     field("演習モード", mode),
+
     normalArea,
+
     customArea,
+
     field("出題順序", order),
+
     count
   );
 
@@ -1895,7 +2710,16 @@ async function renderPracticeSetup(id) {
         selected = selected.slice(0, 20);
       }
 
-      await startSession(deck, selected);
+      // 演習開始時に現在の閲覧権限を確認
+      const latestDeck = await loadDeck(
+        id,
+        true
+      );
+
+      await startSession(
+        latestDeck,
+        selected
+      );
     })
   );
 
@@ -1905,11 +2729,12 @@ async function renderPracticeSetup(id) {
   );
 
   main.append(panel);
+
   updateCount();
 }
 
 /* ==========================================
-   問題別の正誤記録
+   正誤回数の取得
 ========================================== */
 
 function counters(snapshot) {
@@ -1923,22 +2748,64 @@ function counters(snapshot) {
   };
 }
 
-async function getStatistics(deckId, questionId) {
+async function getStatistics(
+  deckId,
+  questionId,
+  force = false
+) {
+  const key = statsKey(
+    deckId,
+    questionId
+  );
+
+  if (!force) {
+    const cached = getCache(
+      cache.statistics,
+      key,
+      CONFIG.STATS_CACHE_MS
+    );
+
+    if (cached !== undefined) {
+      recordCacheHit(
+        `問題別成績：${questionId}`
+      );
+
+      return cached;
+    }
+  }
+
   const [personal, total] = await Promise.all([
-    getDoc(
-      personalRef(deckId, questionId)
+    readDocument(
+      personalRef(deckId, questionId),
+      "個人成績"
     ),
 
-    getDoc(
-      totalRef(deckId, questionId)
+    readDocument(
+      totalRef(deckId, questionId),
+      "全体成績"
     )
   ]);
 
-  return {
+  const stats = {
     personal: counters(personal),
     total: counters(total)
   };
+
+  return setCache(
+    cache.statistics,
+    key,
+    stats
+  );
 }
+
+/* ==========================================
+   正誤保存
+
+   v0.3の主要変更点
+
+   runTransactionによる事前読み取りを廃止。
+   incrementによってサーバー側で加算する。
+========================================== */
 
 async function recordAnswer(
   deckId,
@@ -1955,52 +2822,121 @@ async function recordAnswer(
     questionId
   );
 
-  await runTransaction(db, async tx => {
-    const [pSnap, tSnap] = await Promise.all([
-      tx.get(personal),
-      tx.get(total)
-    ]);
+  const key = statsKey(
+    deckId,
+    questionId
+  );
 
-    const p = counters(pSnap);
-    const t = counters(tSnap);
+  const batch = writeBatch(db);
 
-    const key = correct
-      ? "correct"
-      : "incorrect";
+  const correctIncrement =
+    correct ? 1 : 0;
 
-    p[key]++;
-    t[key]++;
+  const incorrectIncrement =
+    correct ? 0 : 1;
 
-    tx.set(personal, p);
+  batch.set(
+    personal,
+    {
+      correct: increment(
+        correctIncrement
+      ),
 
-    tx.set(total, {
-      ...t,
+      incorrect: increment(
+        incorrectIncrement
+      )
+    },
+    { merge: true }
+  );
+
+  batch.set(
+    total,
+    {
+      correct: increment(
+        correctIncrement
+      ),
+
+      incorrect: increment(
+        incorrectIncrement
+      ),
+
       lastUid: user.uid
-    });
-  });
+    },
+    { merge: true }
+  );
+
+  /*
+    個人成績と全体成績を同時に保存。
+    保存前のgetDoc・tx.getは不要。
+  */
+
+  await batch.commit();
+
+  recordWrite(
+    "自己採点：個人＋全体",
+    2
+  );
+
+  /*
+    保存成功後、
+    メモリ上の成績にも加算する。
+
+    Firebaseへの再読み取りは行わない。
+  */
+
+  const entry = cache.statistics.get(key);
+
+  if (entry) {
+    entry.value = {
+      personal: {
+        correct:
+          entry.value.personal.correct +
+          correctIncrement,
+
+        incorrect:
+          entry.value.personal.incorrect +
+          incorrectIncrement
+      },
+
+      total: {
+        correct:
+          entry.value.total.correct +
+          correctIncrement,
+
+        incorrect:
+          entry.value.total.incorrect +
+          incorrectIncrement
+      }
+    };
+  }
+
+  debugLog(
+    "GRADE",
+    `${questionId}：${correct ? "正解" : "不正解"}`,
+    { ...debugCounters }
+  );
 }
 
 /* ==========================================
-   v0.2：コンパクトな正答率表示
-
-   自分：21/4 (84%) ｜ 全体：76%
-   正解回数：緑色
-   不正解回数：赤色
+   成績表示
 ========================================== */
 
+function accuracy(data) {
+  const total =
+    data.correct + data.incorrect;
+
+  if (!total) return "—";
+
+  return Math.round(
+    data.correct / total * 100
+  ) + "%";
+}
+
 function statsPanel(stats) {
-  const percent = data => {
-    const count =
-      data.correct + data.incorrect;
-
-    return count
-      ? Math.round(
-          data.correct / count * 100
-        ) + "%"
-      : "—";
-  };
-
-  const row = el("div", "quiz-stats");
+  const row = el(
+    "div",
+    "quiz-stats"
+  );
 
   const personal = el(
     "span",
@@ -2013,20 +2949,29 @@ function statsPanel(stats) {
     String(stats.personal.correct)
   );
 
+  correctNumber.style.color =
+    "#218653";
+
   const incorrectNumber = el(
     "strong",
     "quiz-incorrect",
     String(stats.personal.incorrect)
   );
 
+  incorrectNumber.style.color =
+    "#bd4141";
+
   personal.append(
     el("span", "muted", "自分："),
+
     correctNumber,
+
     document.createTextNode("/"),
+
     incorrectNumber,
 
     document.createTextNode(
-      ` (${percent(stats.personal)})`
+      ` (${accuracy(stats.personal)})`
     )
   );
 
@@ -2041,7 +2986,7 @@ function statsPanel(stats) {
     el(
       "strong",
       "",
-      percent(stats.total)
+      accuracy(stats.total)
     )
   );
 
@@ -2057,15 +3002,32 @@ function statsPanel(stats) {
    演習開始
 ========================================== */
 
-async function startSession(deck, questions) {
+async function startSession(
+  deck,
+  questions
+) {
+  if (!questions.length) {
+    throw new Error(
+      "出題する問題がありません。"
+    );
+  }
+
   session = {
     deck,
     questions: [...questions],
     index: 0,
     correct: 0,
     wrong: [],
-    revealed: false
+    revealed: false,
+    statsQuestionId: null,
+    stats: null
   };
+
+  debugLog(
+    "SESSION",
+    `演習開始：${questions.length}問`,
+    { ...debugCounters }
+  );
 
   await renderQuiz();
 }
@@ -2087,13 +3049,15 @@ async function renderQuiz() {
   clearMain();
 
   const s = session;
+
   const q = s.questions[s.index];
 
   const wrap = el("div", "quiz");
 
-  /* ヘッダー */
-
-  const heading = el("div", "toolbar");
+  const heading = el(
+    "div",
+    "toolbar"
+  );
 
   heading.append(
     el("strong", "", s.deck.name),
@@ -2138,7 +3102,10 @@ async function renderQuiz() {
 
   /* 問題カード */
 
-  const card = el("div", "quiz-card");
+  const card = el(
+    "div",
+    "quiz-card"
+  );
 
   const statsSlot = el(
     "div",
@@ -2187,9 +3154,6 @@ async function renderQuiz() {
     );
 
   } else {
-
-    /* 解答・解説 */
-
     const answerArea = el(
       "div",
       "quiz-answer"
@@ -2219,8 +3183,6 @@ async function renderQuiz() {
 
     card.append(answerArea);
 
-    /* 自己採点 */
-
     buttons.append(
       button(
         "× 不正解",
@@ -2245,13 +3207,18 @@ async function renderQuiz() {
 
   main.append(wrap);
 
-  /*
-    問題表示時点で成績を取得する。
-    解答表示時には同じ成績を再利用する。
-  */
+  /* 成績取得 */
 
   try {
-    if (s.statsQuestionId !== q.id) {
+    /*
+      同じ問題の解答表示時には
+      Firebaseに再アクセスしない。
+    */
+
+    if (
+      s.statsQuestionId !== q.id ||
+      !s.stats
+    ) {
       s.stats = await getStatistics(
         s.deck.id,
         q.id
@@ -2290,11 +3257,14 @@ async function grade(correct) {
   }
 
   const s = session;
+
   const q = s.questions[s.index];
 
   /*
-    Firestoreへの保存が完了するまで
-    次の問題に進まない。
+    ここでは問題本文も成績も
+    再読み取りしない。
+
+    保存成功後に次の問題へ進む。
   */
 
   await recordAnswer(
@@ -2302,6 +3272,8 @@ async function grade(correct) {
     q.id,
     correct
   );
+
+  if (session !== s) return;
 
   if (correct) {
     s.correct++;
@@ -2311,6 +3283,9 @@ async function grade(correct) {
 
   s.index++;
   s.revealed = false;
+
+  s.statsQuestionId = null;
+  s.stats = null;
 
   await renderQuiz();
 }
@@ -2322,7 +3297,8 @@ async function grade(correct) {
 function renderResult() {
   const finished = session;
 
-  const total = finished.questions.length;
+  const total =
+    finished.questions.length;
 
   const wrong = [...finished.wrong];
 
@@ -2335,6 +3311,12 @@ function renderResult() {
   session = null;
 
   clearMain();
+
+  debugLog(
+    "SESSION",
+    `演習終了：${total}問`,
+    { ...debugCounters }
+  );
 
   const panel = el(
     "section",
@@ -2372,7 +3354,7 @@ function renderResult() {
 
     el(
       "div",
-      "stat-number",
+      "stat-number quiz-correct",
       String(correct)
     )
   );
@@ -2387,7 +3369,7 @@ function renderResult() {
 
     el(
       "div",
-      "stat-number",
+      "stat-number quiz-incorrect",
       String(wrong.length)
     )
   );
@@ -2410,7 +3392,11 @@ function renderResult() {
     const wrongList = el("div");
 
     wrongList.append(
-      el("h3", "", "間違えた問題")
+      el(
+        "h3",
+        "",
+        "間違えた問題"
+      )
     );
 
     wrong.forEach((q, i) => {
@@ -2442,16 +3428,27 @@ function renderResult() {
       button(
         `間違えた${wrong.length}問を再演習`,
 
-        () => startSession(
-          finished.deck,
-          wrong
-        )
+        async () => {
+          const deck = await loadDeck(
+            finished.deck.id,
+            true
+          );
+
+          await startSession(
+            deck,
+            wrong
+          );
+        }
       )
     );
 
   } else {
     panel.append(
-      el("p", "", "全問正解です。")
+      el(
+        "p",
+        "",
+        "全問正解です。"
+      )
     );
   }
 
@@ -2480,10 +3477,15 @@ function renderResult() {
 
 /* ==========================================
    問題別成績一覧
+
+   v0.3：
+   一度に全問題の成績を読み込まない。
+   50問単位で表示する。
 ========================================== */
 
 async function renderStatistics(id) {
   const deck = await loadDeck(id);
+
   const questions = await loadQuestions(id);
 
   clearMain();
@@ -2507,92 +3509,240 @@ async function renderStatistics(id) {
     el("p", "muted", deck.name)
   );
 
-  const panel = el("section", "panel");
-  const wrap = el("div", "table-wrap");
-  const table = el("table");
+  const panel = el(
+    "section",
+    "panel"
+  );
 
-  const headings = [
-    "No.",
-    "問題",
-    "単元",
-    "重要度",
-    "自分・正解",
-    "自分・不正解",
-    "全体・正解",
-    "全体・不正解"
-  ];
+  const wrap = el(
+    "div",
+    "table-wrap"
+  );
 
-  const head = el("tr");
+  const navigation = el(
+    "div",
+    "actions"
+  );
 
-  headings.forEach(title => {
-    head.append(
-      el("th", "", title)
+  const pageLabel = el(
+    "p",
+    "muted"
+  );
+
+  const PAGE_SIZE = 50;
+
+  let currentPage = 0;
+
+  const pageCount = Math.max(
+    1,
+    Math.ceil(
+      questions.length / PAGE_SIZE
+    )
+  );
+
+  async function drawPage(force = false) {
+    wrap.replaceChildren();
+
+    const start =
+      currentPage * PAGE_SIZE;
+
+    const group = questions.slice(
+      start,
+      start + PAGE_SIZE
     );
-  });
 
-  const thead = el("thead");
+    pageLabel.textContent =
+      `${questions.length}問中 ` +
+      `${group.length ? start + 1 : 0}〜` +
+      `${start + group.length}問を表示`;
 
-  thead.append(head);
-  table.append(thead);
+    const table = el("table");
 
-  const body = el("tbody");
+    const headings = [
+      "No.",
+      "問題",
+      "単元",
+      "重要度",
+      "自分・正解",
+      "自分・不正解",
+      "自分・正答率",
+      "全体・正解",
+      "全体・不正解",
+      "全体・正答率"
+    ];
 
-  table.append(body);
+    const head = el("tr");
 
-  wrap.append(table);
-  panel.append(wrap);
+    headings.forEach(title => {
+      head.append(
+        el("th", "", title)
+      );
+    });
+
+    const thead = el("thead");
+
+    thead.append(head);
+    table.append(thead);
+
+    const body = el("tbody");
+
+    table.append(body);
+
+    wrap.append(table);
+
+    /*
+      50問ずつ表示。
+      その中で10問単位に通信を分割。
+    */
+
+    for (
+      let i = 0;
+      i < group.length;
+      i += 10
+    ) {
+      const chunk = group.slice(
+        i,
+        i + 10
+      );
+
+      const results = await Promise.all(
+        chunk.map(q =>
+          getStatistics(
+            id,
+            q.id,
+            force
+          )
+        )
+      );
+
+      chunk.forEach((q, index) => {
+        const stats = results[index];
+
+        const values = [
+          start + i + index + 1,
+
+          q.question,
+
+          q.unit,
+
+          q.importance,
+
+          stats.personal.correct,
+
+          stats.personal.incorrect,
+
+          accuracy(stats.personal),
+
+          stats.total.correct,
+
+          stats.total.incorrect,
+
+          accuracy(stats.total)
+        ];
+
+        const row = el("tr");
+
+        values.forEach(
+          (value, columnIndex) => {
+            const cell = el(
+              "td",
+              "",
+              String(value)
+            );
+
+            if (
+              columnIndex === 4 ||
+              columnIndex === 7
+            ) {
+              cell.style.color =
+                "#218653";
+            }
+
+            if (
+              columnIndex === 5 ||
+              columnIndex === 8
+            ) {
+              cell.style.color =
+                "#bd4141";
+            }
+
+            row.append(cell);
+          }
+        );
+
+        body.append(row);
+      });
+    }
+
+    pageIndicator.textContent =
+      `${currentPage + 1} / ${pageCount}`;
+  }
+
+  const pageIndicator = el("span");
+
+  navigation.append(
+    button("前へ", async () => {
+      if (currentPage <= 0) return;
+
+      currentPage--;
+
+      await drawPage();
+    }, "secondary"),
+
+    pageIndicator,
+
+    button("次へ", async () => {
+      if (
+        currentPage >=
+        pageCount - 1
+      ) {
+        return;
+      }
+
+      currentPage++;
+
+      await drawPage();
+    }, "secondary"),
+
+    button(
+      "成績を更新",
+      () => drawPage(true),
+      "secondary"
+    )
+  );
+
+  panel.append(
+    pageLabel,
+    navigation,
+    wrap
+  );
 
   main.append(panel);
 
-  /*
-    同時読み込み数を10問に制限。
-    問題数が多い場合も順次表示する。
-  */
-
-  for (
-    let i = 0;
-    i < questions.length;
-    i += 10
-  ) {
-    const group = questions.slice(
-      i,
-      i + 10
-    );
-
-    const results = await Promise.all(
-      group.map(q =>
-        getStatistics(id, q.id)
-      )
-    );
-
-    group.forEach((q, index) => {
-      const stats = results[index];
-
-      const values = [
-        i + index + 1,
-        q.question,
-        q.unit,
-        q.importance,
-        stats.personal.correct,
-        stats.personal.incorrect,
-        stats.total.correct,
-        stats.total.incorrect
-      ];
-
-      const row = el("tr");
-
-      values.forEach(value => {
-        row.append(
-          el("td", "", String(value))
-        );
-      });
-
-      body.append(row);
-    });
-  }
+  await drawPage();
 }
 
 /* ==========================================
-   MONDAI v0.2
+   起動ログ
+========================================== */
+
+console.log(
+  `%c MONDAI v${VERSION} `,
+  "background:#17233e;color:white;padding:5px 10px;font-weight:bold;"
+);
+
+console.log(
+  "[MONDAI] Firestore読み取り最適化版"
+);
+
+console.log(
+  "[MONDAI] 通信統計：MONDAI_DEBUG.stats()"
+);
+
+console.log(
+  "[MONDAI] 計測リセット：MONDAI_DEBUG.reset()"
+);
+
+/* ==========================================
    END OF SCRIPT
 ========================================== */
