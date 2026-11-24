@@ -1,700 +1,1750 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { renderTableList, openTableRegisterForm } from "./keywords.js";
-import { renderKanjiTableList, openKanjiRegisterForm } from "./kanji.js";
-import { renderTimelineList, openTimelineRegisterForm } from "./timeline.js";
-import { renderExamList, openExamRegisterForm } from "./exam.js";
-import { openRefreshModeModal } from "./refresh.js";
 
-const firebaseConfig = { apiKey: "AIzaSyAat1qoigRFAQtIwCHweMeO6P0qTmR10_8", authDomain: "mondai-choco.firebaseapp.com", projectId: "mondai-choco", appId: "1:41081435290:web:f5237845a870e11e719b23" };
-let app, auth;
-export let db;
-export let currentUser = null;
+import { initializeApp }
+  from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
 
-let selectedDocId = null, currentDocData = null, allDocuments = [], allCollections = [], allTables = [], allKanjiTables = [], allTimelines = [], allExams = [], currentMainView = 'documents';
-let collectionPlayList = [], collectionPlayIndex = 0, isPlayingCollection = false, isContinuousAnswerOn = false;
-let hiddenUnits = new Set();
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
 
-try {
-  app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app);
-  enableIndexedDbPersistence(db).catch(err => console.warn(err.code));
-  setPersistence(auth, browserLocalPersistence);
-} catch (e) { console.error(e); }
+import {
+  getFirestore, collection, doc,
+  getDoc, getDocs, addDoc, updateDoc, deleteDoc,
+  query, where, runTransaction, writeBatch,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
-onAuthStateChanged(auth, async (user) => {
-  currentUser = user; updateAuthUI(user);
-  if (user) { 
-    await user.getIdToken(true); 
-    setupRealtimeListeners(); 
-    checkAndHandleSidebarOnLoad();
-  } else { 
-    detachRealtimeListeners(); 
-    clearDocumentView(); 
+/* ==========================================
+   Firebase設定：ここを置き換える
+========================================== */
+
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDG3RdZvL2I9zpLz6Mv39y-gzJCwdLdQNg",
+  authDomain: "mondai-13fe9.firebaseapp.com",
+  projectId: "mondai-13fe9",
+  storageBucket: "mondai-13fe9.firebasestorage.app",
+  messagingSenderId: "918393240956",
+  appId: "1:918393240956:web:f4ea7d359067ea4de338f9",
+  measurementId: "G-QL2WPX2WWT"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+/* ==========================================
+   共通処理
+========================================== */
+
+const $ = id => document.getElementById(id);
+const main = $("main");
+
+let user = null;
+let profile = null;
+let session = null;
+let noticeTimer;
+let busy = false;
+
+const visibilityNames = {
+  public: "公開",
+  limited: "限定公開",
+  private: "非公開"
+};
+
+const columns = [
+  ["question", "問題"],
+  ["answer", "解答"],
+  ["explanation", "解説"],
+  ["unit", "単元"],
+  ["importance", "重要度"]
+];
+
+function el(tag, className = "", text = "") {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== "") node.textContent = text;
+  return node;
+}
+
+function notify(message, error = false) {
+  $("notice").textContent = message;
+  $("notice").className = error ? "error" : "";
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => {
+    $("notice").textContent = "";
+  }, 6000);
+}
+
+function errorMessage(error) {
+  console.error(error);
+
+  const messages = {
+    "auth/email-already-in-use": "このメールアドレスは登録済みです。",
+    "auth/invalid-credential": "メールアドレスまたはパスワードが違います。",
+    "auth/weak-password": "パスワードは6文字以上にしてください。",
+    "auth/invalid-email": "メールアドレスが正しくありません。",
+    "auth/too-many-requests": "試行回数が多すぎます。時間をおいてください。",
+    "auth/network-request-failed": "ネットワークに接続できません。",
+    "permission-denied": "アクセス権限がありません。",
+    "unavailable": "通信できません。接続を確認してください。"
+  };
+
+  notify(
+    messages[error.code] || error.message || "エラーが発生しました。",
+    true
+  );
+}
+
+async function safely(action) {
+  if (busy) return;
+  busy = true;
+
+  try {
+    await action();
+  } catch (error) {
+    errorMessage(error);
+  } finally {
+    busy = false;
+  }
+}
+
+function button(text, action, className = "") {
+  const b = el("button", className, text);
+  b.type = "button";
+
+  b.addEventListener("click", async () => {
+    if (busy) return;
+    b.disabled = true;
+    await safely(action);
+    b.disabled = false;
+  });
+
+  return b;
+}
+
+function field(labelText, control) {
+  const label = el("label", "", labelText);
+  label.append(control);
+  return label;
+}
+
+function input(value = "", placeholder = "") {
+  const node = el("input");
+  node.value = value;
+  node.placeholder = placeholder;
+  return node;
+}
+
+function textarea(value = "") {
+  const node = el("textarea");
+  node.value = value;
+  return node;
+}
+
+function select(options, current) {
+  const node = el("select");
+
+  for (const [value, text] of options) {
+    const option = el("option", "", text);
+    option.value = value;
+    node.append(option);
+  }
+
+  node.value = current;
+  return node;
+}
+
+function showScreen(name) {
+  for (const id of [
+    "auth-screen", "profile-screen", "app-screen"
+  ]) {
+    $(id).hidden = id !== name;
+  }
+}
+
+function pageHeading(title, ...actions) {
+  const heading = el("div", "page-heading");
+  heading.append(el("h1", "", title));
+
+  const group = el("div", "actions");
+  group.append(...actions);
+  heading.append(group);
+
+  return heading;
+}
+
+function clearMain() {
+  main.replaceChildren();
+}
+
+function updateAccount() {
+  $("account").replaceChildren();
+
+  if (!user) return;
+
+  if (profile) {
+    $("account").append(
+      el("span", "", profile.nickname)
+    );
+  }
+
+  $("account").append(
+    button("ログアウト", async () => {
+      if (session && !confirm("演習を終了してログアウトしますか？")) {
+        return;
+      }
+      session = null;
+      await signOut(auth);
+    }, "secondary")
+  );
+}
+
+function deckRef(id) {
+  return doc(db, "decks", id);
+}
+
+function questionCollection(id) {
+  return collection(db, "decks", id, "questions");
+}
+
+function questionRef(deckId, questionId) {
+  return doc(db, "decks", deckId, "questions", questionId);
+}
+
+function personalRef(deckId, questionId) {
+  return doc(
+    db, "decks", deckId, "questions", questionId,
+    "personalStats", user.uid
+  );
+}
+
+function totalRef(deckId, questionId) {
+  return doc(
+    db, "decks", deckId, "questions", questionId,
+    "totals", "all"
+  );
+}
+
+function isOwner(deck) {
+  return deck.ownerId === user.uid;
+}
+
+function canEdit(deck) {
+  return isOwner(deck) ||
+    (deck.editorIds || []).includes(user.uid);
+}
+
+async function loadDeck(id) {
+  const snap = await getDoc(deckRef(id));
+
+  if (!snap.exists()) {
+    throw new Error("デッキが存在しません。");
+  }
+
+  return { ...snap.data(), id: snap.id };
+}
+
+async function loadQuestions(id) {
+  const snap = await getDocs(questionCollection(id));
+
+  return snap.docs
+    .map(d => ({ ...d.data(), id: d.id }))
+    .sort((a, b) =>
+      a.position - b.position || a.id.localeCompare(b.id)
+    );
+}
+
+function normalizeNickname(value) {
+  const name = value.trim();
+
+  if (
+    name.length < 2 ||
+    name.length > 24 ||
+    name.includes("/") ||
+    name === ".." ||
+    /^__.*__$/.test(name) ||
+    /[\r\n,、]/.test(name)
+  ) {
+    throw new Error(
+      "ニックネームは2〜24文字で、スラッシュや読点を含まない名前にしてください。"
+    );
+  }
+
+  return name;
+}
+
+/* ==========================================
+   ログイン・ユーザー登録
+========================================== */
+
+$("auth-form").addEventListener("submit", event => {
+  event.preventDefault();
+
+  safely(async () => {
+    await signInWithEmailAndPassword(
+      auth,
+      $("email").value.trim(),
+      $("password").value
+    );
+  });
+});
+
+$("register").addEventListener("click", () => {
+  safely(async () => {
+    if (!$("auth-form").reportValidity()) return;
+
+    await createUserWithEmailAndPassword(
+      auth,
+      $("email").value.trim(),
+      $("password").value
+    );
+
+    notify("アカウントを作成しました。");
+  });
+});
+
+$("reset-password").addEventListener("click", () => {
+  safely(async () => {
+    const email = $("email").value.trim();
+
+    if (!email) {
+      throw new Error("メールアドレスを入力してください。");
+    }
+
+    await sendPasswordResetEmail(auth, email);
+    notify("パスワード再設定メールの送信を受け付けました。");
+  });
+});
+
+onAuthStateChanged(auth, async currentUser => {
+  user = currentUser;
+  profile = null;
+  session = null;
+
+  updateAccount();
+
+  if (!user) {
+    clearMain();
+    showScreen("auth-screen");
+    return;
+  }
+
+  try {
+    const snap = await getDoc(doc(db, "profiles", user.uid));
+
+    if (!snap.exists()) {
+      showScreen("profile-screen");
+      return;
+    }
+
+    profile = snap.data();
+
+    showScreen("app-screen");
+    updateAccount();
+    await navigate("home");
+
+  } catch (error) {
+    errorMessage(error);
   }
 });
 
-function checkAndHandleSidebarOnLoad() {
-  const sidebar = document.getElementById('sidebar');
-  if (!sidebar) return;
-  // 横幅の半分以上を占領するか判定 (例: 画面幅 < サイドバーの通常幅80px * 2 = 640px 以下などの狭い画面)
-  if (window.innerWidth < 768) {
-    if (!selectedDocId && !isPlayingCollection) {
-      sidebar.classList.remove('collapsed');
+$("profile-form").addEventListener("submit", event => {
+  event.preventDefault();
+
+  safely(async () => {
+    const nickname = normalizeNickname($("nickname").value);
+
+    const nameRef = doc(db, "nicknames", nickname);
+    const profileRef = doc(db, "profiles", user.uid);
+
+    await runTransaction(db, async tx => {
+      const [nameSnap, profileSnap] = await Promise.all([
+        tx.get(nameRef),
+        tx.get(profileRef)
+      ]);
+
+      if (nameSnap.exists()) {
+        throw new Error("このニックネームは使用されています。");
+      }
+
+      if (profileSnap.exists()) {
+        throw new Error("ニックネームは登録済みです。");
+      }
+
+      tx.set(nameRef, { uid: user.uid });
+      tx.set(profileRef, { nickname });
+    });
+
+    profile = { nickname };
+
+    showScreen("app-screen");
+    updateAccount();
+
+    await navigate("home");
+    notify("ニックネームを登録しました。");
+  });
+});
+
+/* ==========================================
+   ナビゲーション
+========================================== */
+
+$("navigation").addEventListener("click", event => {
+  const target = event.target.closest("[data-page]");
+  if (!target) return;
+
+  safely(() => navigate(target.dataset.page));
+});
+
+async function navigate(page) {
+  if (session) {
+    if (!confirm("演習を中断しますか？記録済みの正誤は保存されます。")) {
+      return;
+    }
+    session = null;
+  }
+
+  document.querySelectorAll("[data-page]").forEach(b => {
+    b.classList.toggle("active", b.dataset.page === page);
+  });
+
+  if (page === "home") return renderHome();
+  if (page === "mine") return renderDeckList("mine");
+  if (page === "public") return renderDeckList("public");
+  if (page === "shared") return renderDeckList("shared");
+  if (page === "settings") return renderSettings();
+}
+
+function renderHome() {
+  clearMain();
+
+  main.append(
+    pageHeading("ホーム"),
+    el("p", "muted", `${profile.nickname} さんの学習スペース`)
+  );
+
+  const grid = el("div", "deck-grid");
+
+  const menus = [
+    ["マイデッキ", "作成したデッキで学習する", "mine"],
+    ["公開デッキ", "公開されているデッキを探す", "public"],
+    ["共有デッキ", "共有・共同編集デッキを開く", "shared"]
+  ];
+
+  for (const [title, description, page] of menus) {
+    const card = el("div", "deck-card");
+    card.append(
+      el("h2", "", title),
+      el("p", "muted", description),
+      button("開く", () => navigate(page))
+    );
+    grid.append(card);
+  }
+
+  main.append(grid);
+}
+
+function renderSettings() {
+  clearMain();
+
+  const panel = el("section", "panel");
+
+  panel.append(
+    el("h2", "", "アカウント"),
+    el("p", "", `ニックネーム：${profile.nickname}`),
+    el("p", "", `メールアドレス：${user.email}`),
+    el("p", "muted", "ニックネームは初期版では変更できません。"),
+    button("パスワード再設定メールを送信", async () => {
+      await sendPasswordResetEmail(auth, user.email);
+      notify("再設定メールを送信しました。");
+    }, "secondary")
+  );
+
+  main.append(pageHeading("設定"), panel);
+}
+
+/* ==========================================
+   デッキ一覧
+========================================== */
+
+async function fetchDecks(type) {
+  const col = collection(db, "decks");
+  let queries = [];
+
+  if (type === "mine") {
+    queries = [
+      query(col, where("ownerId", "==", user.uid))
+    ];
+  }
+
+  if (type === "public") {
+    queries = [
+      query(col, where("visibility", "==", "public"))
+    ];
+  }
+
+  if (type === "shared") {
+    queries = [
+      query(col, where("editorIds", "array-contains", user.uid)),
+      query(col, where("viewerIds", "array-contains", user.uid))
+    ];
+  }
+
+  const snapshots = await Promise.all(
+    queries.map(q => getDocs(q))
+  );
+
+  const unique = new Map();
+
+  for (const snap of snapshots) {
+    for (const item of snap.docs) {
+      unique.set(item.id, {
+        ...item.data(),
+        id: item.id
+      });
+    }
+  }
+
+  return [...unique.values()].sort((a, b) =>
+    (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0)
+  );
+}
+
+async function renderDeckList(type) {
+  clearMain();
+
+  const titles = {
+    mine: "マイデッキ",
+    public: "公開デッキ",
+    shared: "共有デッキ"
+  };
+
+  const actions = [];
+
+  if (type === "mine") {
+    actions.push(button("＋ 新規作成", () => renderDeckSettings()));
+  }
+
+  main.append(pageHeading(titles[type], ...actions));
+
+  const search = input("", "デッキ名・公開者を検索");
+  const grid = el("div", "deck-grid");
+
+  main.append(search, grid);
+  grid.append(el("p", "muted", "読み込み中…"));
+
+  const decks = await fetchDecks(type);
+
+  function draw() {
+    grid.replaceChildren();
+
+    const keyword = search.value.trim().toLowerCase();
+
+    const filtered = decks.filter(d =>
+      `${d.name} ${d.ownerName}`.toLowerCase().includes(keyword)
+    );
+
+    if (!filtered.length) {
+      grid.append(el("p", "muted", "該当するデッキがありません。"));
+      return;
+    }
+
+    for (const deck of filtered) {
+      const card = $("deck-template")
+        .content.firstElementChild.cloneNode(true);
+
+      card.querySelector(".deck-name").textContent = deck.name;
+
+      const visibility = card.querySelector(".visibility");
+      visibility.textContent = visibilityNames[deck.visibility];
+      visibility.classList.add(deck.visibility);
+
+      card.querySelector(".deck-meta").textContent =
+        `公開者：${deck.ownerName}` +
+        (isOwner(deck) ? "（自分）" : "");
+
+      const group = card.querySelector(".deck-actions");
+
+      group.append(
+        button("演習", () => renderPracticeSetup(deck.id)),
+        button("成績", () => renderStatistics(deck.id), "secondary"),
+        button("CSV", () => exportDeck(deck.id), "secondary")
+      );
+
+      if (canEdit(deck)) {
+        group.append(
+          button("編集", () => renderEditor(deck.id), "secondary")
+        );
+      }
+
+      if (isOwner(deck)) {
+        group.append(
+          button("設定", () => renderDeckSettings(deck.id), "secondary")
+        );
+      }
+
+      grid.append(card);
+    }
+  }
+
+  search.addEventListener("input", draw);
+  draw();
+}
+
+/* ==========================================
+   デッキ作成・公開設定・共有設定
+========================================== */
+
+async function resolveNicknames(text) {
+  const names = [...new Set(
+    text.split(/[,、\n]/)
+      .map(s => s.trim())
+      .filter(Boolean)
+  )];
+
+  if (names.length > 30) {
+    throw new Error("共有相手は各区分30人まで指定できます。");
+  }
+
+  const result = [];
+
+  for (const name of names) {
+    normalizeNickname(name);
+
+    const snap = await getDoc(doc(db, "nicknames", name));
+
+    if (!snap.exists()) {
+      throw new Error(`「${name}」は登録されていません。`);
+    }
+
+    if (snap.data().uid !== user.uid) {
+      result.push({
+        name,
+        uid: snap.data().uid
+      });
+    }
+  }
+
+  return result;
+}
+
+async function renderDeckSettings(id = null) {
+  const deck = id ? await loadDeck(id) : null;
+
+  if (deck && !isOwner(deck)) {
+    throw new Error("公開設定を変更できるのは所有者だけです。");
+  }
+
+  clearMain();
+
+  main.append(
+    pageHeading(
+      deck ? "デッキ設定" : "デッキを作成",
+      button("戻る", () => renderDeckList("mine"), "secondary")
+    )
+  );
+
+  const panel = el("section", "panel");
+  const name = input(deck?.name || "", "デッキ名");
+
+  const visibility = select([
+    ["private", "非公開：自分のみ"],
+    ["limited", "限定公開：指定ユーザーのみ"],
+    ["public", "公開：ログインユーザー全員"]
+  ], deck?.visibility || "private");
+
+  const editors = textarea(
+    (deck?.editorNames || []).join("\n")
+  );
+
+  const viewers = textarea(
+    (deck?.viewerNames || []).join("\n")
+  );
+
+  editors.placeholder = "共同編集者のニックネームを1行に1人";
+  viewers.placeholder = "公開対象者のニックネームを1行に1人";
+
+  const editorField = field("共同編集者", editors);
+  const viewerField = field("限定公開の対象者", viewers);
+
+  function updateVisibility() {
+    editorField.hidden = visibility.value === "private";
+    viewerField.hidden = visibility.value !== "limited";
+  }
+
+  visibility.addEventListener("change", updateVisibility);
+  updateVisibility();
+
+  panel.append(
+    field("デッキ名", name),
+    field("公開範囲", visibility),
+    editorField,
+    viewerField,
+    el("p", "muted",
+      "ニックネームは完全一致で指定してください。共同編集者は問題の追加・修正・削除ができます。")
+  );
+
+  panel.append(
+    button("保存", async () => {
+      const deckName = name.value.trim();
+
+      if (!deckName || deckName.length > 100) {
+        throw new Error("デッキ名は1〜100文字で入力してください。");
+      }
+
+      if (
+        visibility.value === "public" &&
+        !confirm("登録ユーザー全員が閲覧・CSV保存できる状態にしますか？")
+      ) return;
+
+      const editorList = visibility.value === "private"
+        ? []
+        : await resolveNicknames(editors.value);
+
+      const viewerList = visibility.value === "limited"
+        ? await resolveNicknames(viewers.value)
+        : [];
+
+      const data = {
+        name: deckName,
+        visibility: visibility.value,
+        editorIds: editorList.map(x => x.uid),
+        editorNames: editorList.map(x => x.name),
+        viewerIds: viewerList.map(x => x.uid),
+        viewerNames: viewerList.map(x => x.name),
+        updatedAt: serverTimestamp()
+      };
+
+      let savedId = id;
+
+      if (id) {
+        await updateDoc(deckRef(id), data);
+      } else {
+        const ref = await addDoc(collection(db, "decks"), {
+          ...data,
+          ownerId: user.uid,
+          ownerName: profile.nickname,
+          createdAt: serverTimestamp()
+        });
+        savedId = ref.id;
+      }
+
+      notify("デッキを保存しました。");
+      await renderEditor(savedId);
+    })
+  );
+
+  main.append(panel);
+
+  if (deck) {
+    const dangerPanel = el("section", "panel");
+
+    dangerPanel.append(
+      el("h3", "", "デッキの削除"),
+      el("p", "muted", "削除するとデッキにアクセスできなくなります。"),
+      button("デッキを削除", async () => {
+        if (!confirm(`「${deck.name}」を削除しますか？`)) return;
+
+        await deleteDoc(deckRef(deck.id));
+        notify("デッキを削除しました。");
+        await renderDeckList("mine");
+      }, "danger")
+    );
+
+    main.append(dangerPanel);
+  }
+}
+
+/* ==========================================
+   問題編集
+========================================== */
+
+function validateQuestion(values) {
+  const data = {};
+
+  for (const [key] of columns) {
+    data[key] = String(values[key] ?? "").trim();
+  }
+
+  if (!data.question || !data.answer) {
+    throw new Error("問題と解答は必須です。");
+  }
+
+  if (
+    data.question.length > 10000 ||
+    data.answer.length > 10000 ||
+    data.explanation.length > 20000 ||
+    data.unit.length > 100 ||
+    data.importance.length > 50
+  ) {
+    throw new Error("入力文字数が上限を超えています。");
+  }
+
+  data.unit ||= "未分類";
+  data.importance ||= "未設定";
+
+  return data;
+}
+
+function questionControls(question = {}) {
+  return {
+    question: textarea(question.question || ""),
+    answer: textarea(question.answer || ""),
+    explanation: textarea(question.explanation || ""),
+    unit: input(question.unit || "", "単元名"),
+    importance: input(question.importance || "", "例：1、2、3")
+  };
+}
+
+function controlValues(controls) {
+  return Object.fromEntries(
+    Object.entries(controls).map(([key, node]) => [key, node.value])
+  );
+}
+
+async function renderEditor(id) {
+  const deck = await loadDeck(id);
+
+  if (!canEdit(deck)) {
+    throw new Error("編集権限がありません。");
+  }
+
+  const questions = await loadQuestions(id);
+
+  clearMain();
+
+  main.append(
+    pageHeading(
+      deck.name,
+      button("演習", () => renderPracticeSetup(id)),
+      button("戻る", () => renderDeckList(
+        isOwner(deck) ? "mine" : "shared"
+      ), "secondary")
+    )
+  );
+
+  const tools = el("section", "panel");
+  const fileInput = el("input");
+
+  fileInput.type = "file";
+  fileInput.accept = ".csv,text/csv";
+
+  tools.append(
+    el("h2", "", "CSVインポート"),
+    el("p", "muted", "列順：問題、解答、解説、単元、重要度。既存の問題に追加します。"),
+    fileInput
+  );
+
+  const csvActions = el("div", "actions");
+
+  csvActions.append(
+    button("インポート", async () => {
+      if (!fileInput.files.length) {
+        throw new Error("CSVファイルを選択してください。");
+      }
+
+      const file = fileInput.files[0];
+
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error("CSVファイルは5MB以下にしてください。");
+      }
+
+      await importCSV(id, await file.text());
+      await renderEditor(id);
+    }),
+    button("CSVダウンロード", () => exportDeck(id), "secondary"),
+    button("テンプレート", () => downloadCSV(
+      "MONDAI_template.csv",
+      [columns.map(x => x[1])]
+    ), "secondary")
+  );
+
+  tools.append(csvActions);
+  main.append(tools);
+
+  const addPanel = el("section", "panel");
+  addPanel.append(el("h2", "", "問題の追加"));
+
+  const controls = questionControls();
+  const fields = el("div", "form-grid");
+
+  for (const [key, title] of columns) {
+    fields.append(field(title, controls[key]));
+  }
+
+  addPanel.append(fields);
+
+  addPanel.append(button("問題を追加", async () => {
+    const data = validateQuestion(controlValues(controls));
+    const current = await loadQuestions(id);
+
+    const position = current.reduce(
+      (max, q) => Math.max(max, q.position), 0
+    ) + 1;
+
+    await addDoc(questionCollection(id), {
+      ...data,
+      position
+    });
+
+    notify("問題を追加しました。");
+    await renderEditor(id);
+  }));
+
+  main.append(addPanel);
+
+  const list = el("section", "panel");
+
+  list.append(
+    el("h2", "", `登録問題（${questions.length}問）`)
+  );
+
+  const search = input("", "問題・解答・単元で検索");
+  const wrap = el("div", "table-wrap");
+
+  list.append(search, wrap);
+  main.append(list);
+
+  function drawTable() {
+    wrap.replaceChildren();
+
+    const keyword = search.value.toLowerCase();
+
+    const table = el("table");
+    const head = el("tr");
+
+    for (const title of [
+      "No.", "問題", "解答", "解説", "単元", "重要度", "操作"
+    ]) {
+      head.append(el("th", "", title));
+    }
+
+    const thead = el("thead");
+    thead.append(head);
+    table.append(thead);
+
+    const tbody = el("tbody");
+
+    questions.forEach((q, i) => {
+      if (!`${q.question} ${q.answer} ${q.unit}`
+        .toLowerCase().includes(keyword)) return;
+
+      const row = el("tr");
+      const controls = questionControls(q);
+
+      row.append(el("td", "", String(i + 1)));
+
+      for (const [key] of columns) {
+        const cell = el("td");
+        cell.append(controls[key]);
+        row.append(cell);
+      }
+
+      const operations = el("td");
+
+      operations.append(
+        button("保存", async () => {
+          const values = validateQuestion(controlValues(controls));
+
+          await updateDoc(questionRef(id, q.id), values);
+          Object.assign(q, values);
+
+          notify("問題を保存しました。");
+        }, "secondary"),
+
+        button("削除", async () => {
+          if (!confirm("この問題を削除しますか？")) return;
+
+          await deleteDoc(questionRef(id, q.id));
+          notify("問題を削除しました。");
+
+          await renderEditor(id);
+        }, "danger")
+      );
+
+      row.append(operations);
+      tbody.append(row);
+    });
+
+    table.append(tbody);
+    wrap.append(table);
+  }
+
+  search.addEventListener("input", drawTable);
+  drawTable();
+}
+
+/* ==========================================
+   CSV読み込み・書き出し
+========================================== */
+
+function parseCSV(text) {
+  text = text.replace(/^\uFEFF/, "");
+
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  let closed = false;
+
+  function pushCell() {
+    row.push(cell);
+    cell = "";
+    closed = false;
+  }
+
+  function pushRow() {
+    pushCell();
+    rows.push(row);
+    row = [];
+  }
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (quoted) {
+      if (char === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (char === '"') {
+        quoted = false;
+        closed = true;
+      } else {
+        cell += char;
+      }
+
+      continue;
+    }
+
+    if (char === '"' && cell === "" && !closed) {
+      quoted = true;
+    } else if (char === ",") {
+      pushCell();
+    } else if (char === "\r" || char === "\n") {
+      if (char === "\r" && text[i + 1] === "\n") i++;
+      pushRow();
+    } else {
+      if (closed || char === '"') {
+        throw new Error("CSVの引用符の形式が正しくありません。");
+      }
+      cell += char;
+    }
+  }
+
+  if (quoted) {
+    throw new Error("CSVの引用符が閉じられていません。");
+  }
+
+  if (cell !== "" || row.length || closed) {
+    pushRow();
+  }
+
+  return rows.filter(r => r.some(v => v.trim() !== ""));
+}
+
+async function importCSV(id, text) {
+  const deck = await loadDeck(id);
+
+  if (!canEdit(deck)) {
+    throw new Error("編集権限がありません。");
+  }
+
+  const rows = parseCSV(text);
+
+  if (!rows.length) {
+    throw new Error("CSVにデータがありません。");
+  }
+
+  const first = rows[0].map(s => s.trim().toLowerCase());
+
+  const aliases = [
+    ["問題", "question"],
+    ["解答", "回答", "answer"],
+    ["解説", "explanation"],
+    ["単元", "unit"],
+    ["重要度", "importance"]
+  ];
+
+  const headerIndexes = aliases.map(names =>
+    first.findIndex(v => names.includes(v))
+  );
+
+  const hasHeader =
+    headerIndexes[0] !== -1 &&
+    headerIndexes[1] !== -1;
+
+  const indexes = hasHeader
+    ? headerIndexes
+    : [0, 1, 2, 3, 4];
+
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+
+  if (!dataRows.length) {
+    throw new Error("インポートする問題がありません。");
+  }
+
+  if (dataRows.length > 300) {
+    throw new Error("1回のインポートは300問までです。分割してください。");
+  }
+
+  // 書き込み前に全行の内容を検査する
+  const data = dataRows.map((row, index) => {
+    try {
+      const values = {};
+
+      columns.forEach(([key], i) => {
+        values[key] = row[indexes[i]] || "";
+      });
+
+      return validateQuestion(values);
+
+    } catch (error) {
+      throw new Error(
+        `データ${index + 1}行目：${error.message}`
+      );
+    }
+  });
+
+  if (!confirm(`${data.length}問を追加しますか？`)) return;
+
+  const existing = await loadQuestions(id);
+
+  let position = existing.reduce(
+    (max, q) => Math.max(max, q.position), 0
+  );
+
+  const batch = writeBatch(db);
+
+  for (const values of data) {
+    const ref = doc(questionCollection(id));
+
+    batch.set(ref, {
+      ...values,
+      position: ++position
+    });
+  }
+
+  await batch.commit();
+
+  notify(`${data.length}問をインポートしました。`);
+}
+
+function csvEscape(value) {
+  let text = String(value ?? "");
+
+  // 表計算ソフトで意図せず数式として実行されるのを防止
+  if (/^\s*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) {
+    text = "'" + text;
+  }
+
+  return '"' + text.replaceAll('"', '""') + '"';
+}
+
+function downloadCSV(filename, rows) {
+  const content = "\uFEFF" + rows.map(
+    row => row.map(csvEscape).join(",")
+  ).join("\r\n");
+
+  const blob = new Blob(
+    [content],
+    { type: "text/csv;charset=utf-8;" }
+  );
+
+  const url = URL.createObjectURL(blob);
+  const link = el("a");
+
+  link.href = url;
+  link.download = filename;
+
+  document.body.append(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+async function exportDeck(id) {
+  const deck = await loadDeck(id);
+  const questions = await loadQuestions(id);
+
+  const rows = [
+    columns.map(x => x[1]),
+    ...questions.map(q => columns.map(([key]) => q[key]))
+  ];
+
+  downloadCSV(
+    `${deck.name.replace(/[\\/:*?"<>|]/g, "_")}.csv`,
+    rows
+  );
+
+  notify("CSVを出力しました。");
+}
+
+/* ==========================================
+   演習条件の設定
+========================================== */
+
+function checkItem(text, value, checked = true) {
+  const label = el("label", "check-item");
+  const checkbox = el("input");
+
+  checkbox.type = "checkbox";
+  checkbox.value = value;
+  checkbox.checked = checked;
+
+  label.append(checkbox, el("span", "", text));
+
+  return label;
+}
+
+function checkedValues(container) {
+  return new Set(
+    [...container.querySelectorAll("input:checked")]
+      .map(node => node.value)
+  );
+}
+
+function shuffle(items) {
+  const array = [...items];
+
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+
+  return array;
+}
+
+async function renderPracticeSetup(id) {
+  const deck = await loadDeck(id);
+  const questions = await loadQuestions(id);
+
+  clearMain();
+
+  main.append(
+    pageHeading(
+      deck.name,
+      button("ホーム", () => navigate("home"), "secondary")
+    )
+  );
+
+  if (!questions.length) {
+    main.append(el("p", "muted", "問題が登録されていません。"));
+    return;
+  }
+
+  const panel = el("section", "panel");
+
+  const mode = select([
+    ["normal", "通常モード"],
+    ["custom", "カスタムモード"]
+  ], "normal");
+
+  const order = select([
+    ["ordered", "順番（すべて）"],
+    ["random", "ランダム（すべて）"],
+    ["random20", "ランダム（20問）"]
+  ], "ordered");
+
+  const units = [...new Set(questions.map(q => q.unit))];
+
+  const importance = [...new Set(
+    questions.map(q => q.importance)
+  )].sort((a, b) =>
+    a.localeCompare(b, "ja", { numeric: true })
+  );
+
+  const unitGroup = el("div", "check-group");
+  const importanceGroup = el("div", "check-group");
+  const customGroup = el("div", "custom-list");
+
+  for (const unit of units) {
+    unitGroup.append(checkItem(unit, unit));
+  }
+
+  for (const value of importance) {
+    importanceGroup.append(checkItem(value, value));
+  }
+
+  questions.forEach((q, i) => {
+    customGroup.append(
+      checkItem(`${i + 1}. ${q.question}`, q.id, false)
+    );
+  });
+
+  const normalArea = el("div");
+
+  normalArea.append(
+    el("h3", "", "単元"),
+    unitGroup,
+    el("h3", "", "重要度"),
+    importanceGroup
+  );
+
+  const customArea = el("div");
+  const customActions = el("div", "actions");
+
+  const count = el("p", "muted");
+
+  function getSelected() {
+    if (mode.value === "custom") {
+      const selected = checkedValues(customGroup);
+      return questions.filter(q => selected.has(q.id));
+    }
+
+    const selectedUnits = checkedValues(unitGroup);
+    const selectedImportance = checkedValues(importanceGroup);
+
+    return questions.filter(q =>
+      selectedUnits.has(q.unit) &&
+      selectedImportance.has(q.importance)
+    );
+  }
+
+  function updateCount() {
+    normalArea.hidden = mode.value !== "normal";
+    customArea.hidden = mode.value !== "custom";
+
+    const available = getSelected().length;
+    const amount = order.value === "random20"
+      ? Math.min(20, available)
+      : available;
+
+    count.textContent = `対象：${available}問 ／ 出題：${amount}問`;
+  }
+
+  customActions.append(
+    button("全選択", () => {
+      customGroup.querySelectorAll("input").forEach(
+        node => node.checked = true
+      );
+      updateCount();
+    }, "secondary"),
+
+    button("全解除", () => {
+      customGroup.querySelectorAll("input").forEach(
+        node => node.checked = false
+      );
+      updateCount();
+    }, "secondary")
+  );
+
+  customArea.append(
+    el("h3", "", "出題する問題を選択"),
+    customActions,
+    customGroup
+  );
+
+  panel.append(
+    field("演習モード", mode),
+    normalArea,
+    customArea,
+    field("出題順序", order),
+    count
+  );
+
+  panel.append(button("演習を開始", async () => {
+    let selected = getSelected();
+
+    if (!selected.length) {
+      throw new Error("出題する問題を選択してください。");
+    }
+
+    if (order.value !== "ordered") {
+      selected = shuffle(selected);
+    }
+
+    if (order.value === "random20") {
+      selected = selected.slice(0, 20);
+    }
+
+    await startSession(deck, selected);
+  }));
+
+  panel.addEventListener("change", updateCount);
+
+  main.append(panel);
+  updateCount();
+}
+
+/* ==========================================
+   問題別の正誤記録
+========================================== */
+
+function counters(snapshot) {
+  const data = snapshot.exists() ? snapshot.data() : {};
+
+  return {
+    correct: data.correct || 0,
+    incorrect: data.incorrect || 0
+  };
+}
+
+async function getStatistics(deckId, questionId) {
+  const [personal, total] = await Promise.all([
+    getDoc(personalRef(deckId, questionId)),
+    getDoc(totalRef(deckId, questionId))
+  ]);
+
+  return {
+    personal: counters(personal),
+    total: counters(total)
+  };
+}
+
+async function recordAnswer(deckId, questionId, correct) {
+  const personal = personalRef(deckId, questionId);
+  const total = totalRef(deckId, questionId);
+
+  await runTransaction(db, async tx => {
+    const [pSnap, tSnap] = await Promise.all([
+      tx.get(personal),
+      tx.get(total)
+    ]);
+
+    const p = counters(pSnap);
+    const t = counters(tSnap);
+    const key = correct ? "correct" : "incorrect";
+
+    p[key]++;
+    t[key]++;
+
+    tx.set(personal, p);
+
+    tx.set(total, {
+      ...t,
+      lastUid: user.uid
+    });
+  });
+}
+
+function statsPanel(stats) {
+  const grid = el("div", "stats-grid");
+
+  for (const [title, data] of [
+    ["自分の成績", stats.personal],
+    ["全体の成績", stats.total]
+  ]) {
+    const box = el("div", "stat-box");
+
+    const total = data.correct + data.incorrect;
+    const percent = total
+      ? Math.round(data.correct / total * 100) + "%"
+      : "—";
+
+    box.append(
+      el("div", "muted", title),
+      el("div", "stat-number", percent),
+      el("div", "", `正解 ${data.correct} ／ 不正解 ${data.incorrect}`)
+    );
+
+    grid.append(box);
+  }
+
+  return grid;
+}
+
+/* ==========================================
+   演習画面
+========================================== */
+
+async function startSession(deck, questions) {
+  session = {
+    deck,
+    questions: [...questions],
+    index: 0,
+    correct: 0,
+    wrong: [],
+    revealed: false
+  };
+
+  await renderQuiz();
+}
+
+async function renderQuiz() {
+  if (!session) return;
+
+  if (session.index >= session.questions.length) {
+    return renderResult();
+  }
+
+  clearMain();
+
+  const s = session;
+  const q = s.questions[s.index];
+
+  const wrap = el("div", "quiz");
+
+  const heading = el("div", "toolbar");
+
+  heading.append(
+    el("strong", "", s.deck.name),
+    el("span", "", `${s.index + 1} / ${s.questions.length}`),
+
+    button("演習終了", async () => {
+      if (!confirm("演習を終了しますか？")) return;
+
+      const id = s.deck.id;
+      session = null;
+
+      await renderPracticeSetup(id);
+    }, "secondary")
+  );
+
+  const track = el("div", "progress-track");
+  const bar = el("div", "progress-bar");
+
+  bar.style.width =
+    `${s.index / s.questions.length * 100}%`;
+
+  track.append(bar);
+
+  const card = el("div", "quiz-card");
+
+  card.append(
+    el("span", "tag", `単元：${q.unit}`),
+    document.createTextNode(" "),
+    el("span", "tag", `重要度：${q.importance}`),
+    el("div", "quiz-question", q.question)
+  );
+
+  const buttons = el("div", "quiz-buttons");
+
+  if (!s.revealed) {
+    buttons.append(button("解答を表示", async () => {
+      s.revealed = true;
+      await renderQuiz();
+    }));
+  } else {
+    const answerArea = el("div", "quiz-answer");
+
+    answerArea.append(
+      el("p", "muted", "解答"),
+      el("div", "answer-text", q.answer)
+    );
+
+    if (q.explanation) {
+      answerArea.append(
+        el("h3", "", "解説"),
+        el("p", "explanation", q.explanation)
+      );
+    }
+
+    card.append(answerArea);
+
+    buttons.append(
+      button("× 不正解", () => grade(false), "danger"),
+      button("○ 正解", () => grade(true), "success")
+    );
+  }
+
+  wrap.append(heading, track, card, buttons);
+  main.append(wrap);
+
+  if (s.revealed) {
+    try {
+      const stats = await getStatistics(s.deck.id, q.id);
+
+      if (session === s && s.questions[s.index]?.id === q.id) {
+        card.append(statsPanel(stats));
+      }
+    } catch (error) {
+      errorMessage(error);
     }
   }
 }
 
-function updateAuthUI(user) {
-  const authStatus = document.getElementById('auth-status');
-  const loginBtn = document.getElementById('login-btn');
-  const logoutBtn = document.getElementById('logout-btn');
-  const userInfo = document.getElementById('user-info');
-  const userPhoto = document.getElementById('user-photo');
-  const userName = document.getElementById('user-name');
-  const mainContent = document.getElementById('main-content');
-  const headerMenuBtn = document.getElementById('header-menu-btn');
+async function grade(correct) {
+  if (!session || !session.revealed) return;
 
-  if (user) {
-    if (authStatus) { authStatus.innerText = "ログイン中"; authStatus.className = "px-2 py-0.5 bg-green-100 text-green-800 rounded text-[10px] font-semibold"; }
-    if (loginBtn) loginBtn.classList.add('hidden');
-    if (logoutBtn) logoutBtn.classList.remove('hidden');
-    if (userInfo) userInfo.classList.remove('hidden');
-    if (headerMenuBtn) headerMenuBtn.classList.remove('hidden');
-    if (userPhoto) userPhoto.src = user.photoURL || '';
-    if (userName) userName.innerText = user.displayName || user.email;
-    if (mainContent) mainContent.classList.remove('opacity-50', 'pointer-events-none');
+  const s = session;
+  const q = s.questions[s.index];
+
+  // 保存に成功するまで次の問題に進めない
+  await recordAnswer(s.deck.id, q.id, correct);
+
+  if (correct) {
+    s.correct++;
   } else {
-    if (authStatus) { authStatus.innerText = "未ログイン"; authStatus.className = "px-2 py-0.5 bg-gray-100 text-gray-800 rounded text-[10px] font-semibold"; }
-    if (loginBtn) loginBtn.classList.remove('hidden');
-    if (logoutBtn) logoutBtn.classList.add('hidden');
-    if (userInfo) userInfo.classList.add('hidden');
-    if (headerMenuBtn) headerMenuBtn.classList.add('hidden');
-    if (mainContent) mainContent.classList.add('opacity-50', 'pointer-events-none');
-  }
-}
-
-function safeListen(id, event, callback) {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener(event, callback);
-}
-
-safeListen('login-btn', 'click', () => signInWithPopup(auth, new GoogleAuthProvider()));
-safeListen('logout-btn', 'click', () => signOut(auth));
-
-const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
-const sidebar = document.getElementById('sidebar');
-if (toggleSidebarBtn && sidebar) {
-  toggleSidebarBtn.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
-}
-
-export function closeAllEditorsAndSync() {
-  const saveBtn = document.getElementById('save-table-doc-btn');
-  if (saveBtn && document.getElementById('table-register-form-container') && !document.getElementById('table-register-form-container').classList.contains('hidden')) {
-    saveBtn.click();
-  }
-  const kanjiSaveBtn = document.getElementById('save-kanji-doc-btn');
-  if (kanjiSaveBtn && document.getElementById('kanji-register-form-container') && !document.getElementById('kanji-register-form-container').classList.contains('hidden')) {
-    kanjiSaveBtn.click();
-  }
-  const timelineSaveBtn = document.getElementById('save-timeline-doc-btn');
-  if (timelineSaveBtn && document.getElementById('timeline-register-form-container') && !document.getElementById('timeline-register-form-container').classList.contains('hidden')) {
-    timelineSaveBtn.click();
+    s.wrong.push(q);
   }
 
-  ['table-register-form-container', 'kanji-register-form-container', 'timeline-register-form-container', 'exam-register-container'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('hidden');
-  });
+  s.index++;
+  s.revealed = false;
 
-  // 保存完了等でコンテンツ表示がなくなればサイドバーを開く（スマホなど狭い画面の場合）
-  if (window.innerWidth < 768 && sidebar) {
-    sidebar.classList.remove('collapsed');
-  }
+  await renderQuiz();
 }
 
-safeListen('sidebar-add-btn', 'click', () => {
-  closeAllEditorsAndSync();
-  if (currentMainView === 'documents') {
-    ['qd-title', 'qd-subject', 'qd-unit', 'qd-desc', 'qd-question', 'qd-answer'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = "";
-    });
-    const modal = document.getElementById('quick-doc-modal');
-    if (modal) modal.classList.remove('hidden');
-  } else if (currentMainView === 'collections') {
-    openCollectionEditModal(null);
-  } else if (currentMainView === 'tables') {
-    openTableRegisterForm(null);
-  } else if (currentMainView === 'kanji') {
-    openKanjiRegisterForm(null);
-  } else if (currentMainView === 'timeline') {
-    openTimelineRegisterForm(null);
-  } else if (currentMainView === 'exams') {
-    openExamRegisterForm(null, {
-      documents: allDocuments,
-      collections: allCollections,
-      questionTables: allTables,
-      kanjiTables: allKanjiTables,
-      timelineTables: allTimelines
-    });
-  }
-});
+/* ==========================================
+   結果・間違えた問題の再演習
+========================================== */
 
-safeListen('nav-docs', 'click', () => {
-  closeAllEditorsAndSync();
-  currentMainView = 'documents'; isPlayingCollection = false; setActiveNavTab('nav-docs'); renderCurrentView(); clearDocumentView(); 
-});
+function renderResult() {
+  const finished = session;
 
-safeListen('nav-collections', 'click', () => {
-  closeAllEditorsAndSync();
-  currentMainView = 'collections'; isPlayingCollection = false; setActiveNavTab('nav-collections'); renderCurrentView(); 
-});
+  const total = finished.questions.length;
+  const wrong = [...finished.wrong];
+  const correct = finished.correct;
+  const percent = Math.round(correct / total * 100);
 
-safeListen('nav-tables', 'click', () => {
-  closeAllEditorsAndSync();
-  currentMainView = 'tables'; isPlayingCollection = false; setActiveNavTab('nav-tables'); renderCurrentView(); 
-});
+  session = null;
+  clearMain();
 
-safeListen('nav-kanji', 'click', () => {
-  closeAllEditorsAndSync();
-  currentMainView = 'kanji'; isPlayingCollection = false; setActiveNavTab('nav-kanji'); renderCurrentView(); 
-});
+  const panel = el("section", "panel quiz");
 
-safeListen('nav-timeline', 'click', () => {
-  closeAllEditorsAndSync();
-  currentMainView = 'timeline'; isPlayingCollection = false; setActiveNavTab('nav-timeline'); renderCurrentView(); 
-});
+  panel.append(
+    el("h2", "", "演習結果"),
+    el("p", "muted", finished.deck.name),
+    el("div", "result-number", `${percent}%`)
+  );
 
-safeListen('nav-exams', 'click', () => {
-  closeAllEditorsAndSync();
-  currentMainView = 'exams'; isPlayingCollection = false; setActiveNavTab('nav-exams'); renderCurrentView(); 
-});
+  const stats = el("div", "stats-grid");
 
-safeListen('nav-refresh', 'click', () => {
-  closeAllEditorsAndSync();
-  isPlayingCollection = false;
-  openRefreshModeModal({
-    documents: allDocuments,
-    collections: allCollections,
-    questionTables: allTables,
-    kanjiTables: allKanjiTables,
-    timelineTables: allTimelines,
-    exams: allExams
-  });
-});
+  const correctBox = el("div", "stat-box");
+  correctBox.append(
+    el("p", "", "正解"),
+    el("div", "stat-number", String(correct))
+  );
 
-safeListen('close-quick-doc-modal', 'click', () => {
-  const modal = document.getElementById('quick-doc-modal');
-  if (modal) modal.classList.add('hidden');
-});
+  const wrongBox = el("div", "stat-box");
+  wrongBox.append(
+    el("p", "", "不正解"),
+    el("div", "stat-number", String(wrong.length))
+  );
 
-safeListen('save-quick-doc-btn', 'click', async () => {
-  if (!currentUser) return;
-  const title = document.getElementById('qd-title')?.value.trim() || "";
-  const subject = document.getElementById('qd-subject')?.value.trim() || "未設定";
-  const unit = document.getElementById('qd-unit')?.value.trim() || "";
-  const description = document.getElementById('qd-desc')?.value.trim() || "";
-  const questionText = document.getElementById('qd-question')?.value.trim() || "";
-  const answerText = document.getElementById('qd-answer')?.value.trim() || "";
+  stats.append(correctBox, wrongBox);
+  panel.append(stats);
 
-  if (!title || !questionText) { alert("タイトルと問題文を入力してください。"); return; }
+  const actions = el("div", "actions");
 
-  const docId = `doc_${Date.now()}`;
-  await setDoc(doc(db, "users", currentUser.uid, "documents", docId), {
-    title,
-    subject,
-    unit,
-    description,
-    questionText,
-    answerText,
-    questionMaterials: [],
-    answerMaterials: [],
-    stats: { correct: 0, incorrect: 0 },
-    updatedAt: Date.now(),
-    isDeleted: false
-  });
+  actions.style.marginTop = "20px";
 
-  alert("短問を追加しました！");
-  const modal = document.getElementById('quick-doc-modal');
-  if (modal) modal.classList.add('hidden');
-});
+  if (wrong.length) {
+    const wrongList = el("div");
 
-safeListen('open-trash-modal-btn', 'click', () => {
-  renderTrashModalItems();
-  const modal = document.getElementById('trash-modal');
-  if (modal) modal.classList.remove('hidden');
-});
+    wrongList.append(el("h3", "", "間違えた問題"));
 
-safeListen('close-trash-modal', 'click', () => {
-  const modal = document.getElementById('trash-modal');
-  if (modal) modal.classList.add('hidden');
-});
+    wrong.forEach((q, i) => {
+      const item = el("div", "panel");
 
-function renderTrashModalItems() {
-  const container = document.getElementById('trash-items-list');
-  if (!container) return;
-  container.innerHTML = '';
-  
-  const allTrashed = [];
-  allDocuments.forEach(d => { if (d.isDeleted) allTrashed.push({ ...d, typeName: '問題', col: 'documents' }); });
-  allCollections.forEach(c => { if (c.isDeleted) allTrashed.push({ ...c, title: c.name, typeName: '問題集', col: 'collections' }); });
-  allTables.forEach(t => { if (t.isDeleted) allTrashed.push({ ...t, typeName: '一問一答', col: 'questionTables' }); });
-  allKanjiTables.forEach(k => { if (k.isDeleted) allTrashed.push({ ...k, typeName: '漢字', col: 'kanjiTables' }); });
-  allTimelines.forEach(l => { if (l.isDeleted) allTrashed.push({ ...l, typeName: '年表', col: 'timelineTables' }); });
-  allExams.forEach(e => { if (e.isDeleted) allTrashed.push({ ...e, typeName: '試験', col: 'exams' }); });
+      item.append(
+        el("strong", "", `${i + 1}. ${q.question}`),
+        el("p", "", `解答：${q.answer}`)
+      );
 
-  if (allTrashed.length === 0) {
-    container.innerHTML = '<p class="text-gray-400 text-xs italic text-center py-8">ゴミ箱は空です。</p>';
-    return;
-  }
-
-  allTrashed.forEach(item => {
-    const row = document.createElement('div');
-    row.className = "flex justify-between items-center p-3 bg-slate-50 border rounded-lg text-xs";
-    row.innerHTML = `
-      <div>
-        <span class="px-2 py-0.5 bg-slate-200 text-slate-700 rounded font-bold text-[10px] mr-2">${item.typeName}</span>
-        <span class="font-bold text-slate-800">${item.title}</span>
-      </div>
-      <button class="restore-btn bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1 rounded transition">復元する</button>
-    `;
-    row.querySelector('.restore-btn').addEventListener('click', async () => {
-      await setDoc(doc(db, "users", currentUser.uid, item.col, item.id), { isDeleted: false }, { merge: true });
-      row.remove();
-      if (container.children.length === 0) {
-        container.innerHTML = '<p class="text-gray-400 text-xs italic text-center py-8">ゴミ箱は空です。</p>';
-      }
-    });
-    container.appendChild(row);
-  });
-}
-
-function setActiveNavTab(tabId) {
-  ['nav-docs', 'nav-collections', 'nav-tables', 'nav-kanji', 'nav-timeline', 'nav-exams'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.className = id === tabId ? "flex-1 py-1 font-bold text-blue-600 bg-white rounded shadow-sm text-[11px]" : "flex-1 py-1 font-medium text-gray-500 hover:text-gray-700 text-[11px]";
-  });
-}
-
-function setupRealtimeListeners() {
-  detachRealtimeListeners();
-  if (!currentUser) return;
-  
-  onSnapshot(query(collection(db, "users", currentUser.uid, "documents"), orderBy("updatedAt", "desc")), snap => {
-    allDocuments = []; 
-    snap.forEach(d => allDocuments.push({ id: d.id, ...d.data() })); 
-    if (currentMainView === 'documents') renderCurrentView();
-  });
-
-  onSnapshot(query(collection(db, "users", currentUser.uid, "collections"), orderBy("updatedAt", "desc")), snap => {
-    allCollections = []; 
-    snap.forEach(d => allCollections.push({ id: d.id, ...d.data() })); 
-    if (currentMainView === 'collections') renderCurrentView();
-  });
-
-  onSnapshot(query(collection(db, "users", currentUser.uid, "questionTables"), orderBy("updatedAt", "desc")), snap => {
-    allTables = []; 
-    snap.forEach(d => allTables.push({ id: d.id, ...d.data() })); 
-    if (currentMainView === 'tables') renderCurrentView();
-  });
-
-  onSnapshot(query(collection(db, "users", currentUser.uid, "kanjiTables"), orderBy("updatedAt", "desc")), snap => {
-    allKanjiTables = []; 
-    snap.forEach(d => allKanjiTables.push({ id: d.id, ...d.data() })); 
-    if (currentMainView === 'kanji') renderCurrentView();
-  });
-
-  onSnapshot(query(collection(db, "users", currentUser.uid, "timelineTables"), orderBy("updatedAt", "desc")), snap => {
-    allTimelines = []; 
-    snap.forEach(d => allTimelines.push({ id: d.id, ...d.data() })); 
-    if (currentMainView === 'timeline') renderCurrentView();
-  });
-
-  onSnapshot(query(collection(db, "users", currentUser.uid, "exams"), orderBy("updatedAt", "desc")), snap => {
-    allExams = []; 
-    snap.forEach(d => allExams.push({ id: d.id, ...d.data() })); 
-    if (currentMainView === 'exams') renderCurrentView();
-  });
-}
-
-function detachRealtimeListeners() {}
-function renderCurrentView() {
-  if (currentMainView === 'documents') renderDocumentList(allDocuments);
-  else if (currentMainView === 'collections') renderCollectionList(allCollections);
-  else if (currentMainView === 'tables') renderTableList(allTables, hiddenUnits);
-  else if (currentMainView === 'kanji') renderKanjiTableList(allKanjiTables, hiddenUnits);
-  else if (currentMainView === 'timeline') renderTimelineList(allTimelines);
-  else if (currentMainView === 'exams') renderExamList(allExams, {
-    documents: allDocuments,
-    collections: allCollections,
-    questionTables: allTables,
-    kanjiTables: allKanjiTables,
-    timelineTables: allTimelines
-  });
-}
-
-function renderDocumentList(docs) {
-  const container = document.getElementById('sidebar-list'); if (!container) return;
-  const activeDocs = docs.filter(d => !d.isDeleted);
-  container.innerHTML = activeDocs.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題がありません。</p>' : '';
-  
-  updateUnitFilterUI(activeDocs);
-
-  activeDocs.forEach(data => {
-    if (data.unit && hiddenUnits.has(data.unit)) return;
-
-    const item = document.createElement('div');
-    item.className = `p-2.5 rounded-lg border cursor-pointer text-xs transition ${data.id === selectedDocId && !isPlayingCollection ? 'bg-blue-50 border-blue-400 font-semibold' : 'bg-white hover:bg-slate-50'}`;
-    item.innerHTML = `<div class="flex justify-between items-center mb-1"><span class="truncate font-bold">${data.title}</span><div class="flex gap-1"><button class="edit-btn text-blue-500">編集</button><button class="del-btn text-red-400">削除</button></div></div><div class="text-[10px] text-gray-500">教科: ${data.subject || '未設定'} ${data.unit ? `| 単元: ${data.unit}` : ''}</div>`;
-    
-    item.addEventListener('click', (e) => {
-      if (e.target.classList.contains('del-btn') || e.target.classList.contains('edit-btn')) return;
-      closeAllEditorsAndSync();
-      if (isPlayingCollection) {
-        const idx = collectionPlayList.findIndex(d => d.id === data.id);
-        if (idx !== -1) { collectionPlayIndex = idx; renderCollectionPlayerCurrent(); }
-        return;
-      }
-      selectDocument(data);
+      wrongList.append(item);
     });
 
-    item.querySelector('.del-btn').addEventListener('click', async (e) => { 
-      e.stopPropagation(); 
-      if (confirm(`「${data.title}」をゴミ箱に移動しますか？`)) {
-        await setDoc(doc(db, "users", currentUser.uid, "documents", data.id), { isDeleted: true }, { merge: true });
-        if (selectedDocId === data.id) clearDocumentView();
-      }
-    });
+    panel.append(wrongList);
 
-    item.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); openRegisterForm(data); });
-    container.appendChild(item);
-  });
-}
-
-function updateUnitFilterUI(docs) {
-  const units = [...new Set(docs.map(d => d.unit).filter(Boolean))];
-  const container = document.getElementById('unit-filter-container');
-  const checkboxesArea = document.getElementById('unit-checkboxes');
-  if (!container || !checkboxesArea) return;
-  if (units.length === 0) {
-    container.classList.add('hidden');
-    return;
-  }
-  container.classList.remove('hidden');
-  checkboxesArea.innerHTML = '';
-  units.forEach(u => {
-    const lbl = document.createElement('label');
-    lbl.className = "flex items-center gap-1 cursor-pointer";
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.checked = hiddenUnits.has(u);
-    chk.onchange = () => {
-      if (chk.checked) hiddenUnits.add(u);
-      else hiddenUnits.delete(u);
-      renderCurrentView();
-    };
-    lbl.appendChild(chk);
-    lbl.appendChild(document.createTextNode(u));
-    checkboxesArea.appendChild(lbl);
-  });
-}
-
-function renderCollectionList(collections) {
-  const container = document.getElementById('sidebar-list'); if (!container) return;
-  const activeCollections = collections.filter(c => !c.isDeleted);
-  container.innerHTML = activeCollections.length === 0 ? '<p class="text-gray-400 text-xs italic p-2">問題集がありません。</p>' : '';
-  activeCollections.forEach(c => {
-    const item = document.createElement('div');
-    item.className = 'p-3 rounded-lg border bg-white hover:bg-slate-50 border-slate-200 cursor-pointer text-xs transition space-y-2';
-    const count = c.documentIds ? c.documentIds.length : 0;
-    item.innerHTML = `
-      <div class="flex justify-between items-center">
-        <span class="font-bold text-slate-800 text-sm truncate">${c.name}</span>
-        <div class="flex gap-1">
-          <button class="edit-coll text-blue-600 font-bold">編集</button>
-          <button class="del-coll text-red-500 font-bold">削除</button>
-        </div>
-      </div>
-      <div class="text-[10px] text-gray-500">登録問題数: ${count}問 ${c.description ? `| ${c.description}` : ''}</div>
-      <button class="play-coll-btn w-full bg-blue-600 text-white py-1.5 rounded font-bold">問題集をプレイ 🚀</button>
-    `;
-    item.querySelector('.play-coll-btn').addEventListener('click', (e) => { 
-      e.stopPropagation(); 
-      closeAllEditorsAndSync();
-      startCollectionPlay(c); 
-    });
-    item.querySelector('.edit-coll').addEventListener('click', (e) => { 
-      e.stopPropagation(); 
-      closeAllEditorsAndSync();
-      openCollectionEditModal(c); 
-    });
-    
-    item.querySelector('.del-coll').addEventListener('click', async (e) => { 
-      e.stopPropagation(); 
-      if (confirm(`問題集「${c.name}」をゴミ箱に移動しますか？`)) {
-        await setDoc(doc(db, "users", currentUser.uid, "collections", c.id), { isDeleted: true }, { merge: true });
-      }
-    });
-    container.appendChild(item);
-  });
-}
-
-function openCollectionEditModal(collData) {
-  const editingCollId = document.getElementById('editing-coll-id');
-  const collNameInput = document.getElementById('coll-name-input');
-  const collDescInput = document.getElementById('coll-desc-input');
-  const collModalTitle = document.getElementById('coll-modal-title');
-  if (editingCollId) editingCollId.value = collData ? collData.id : '';
-  if (collNameInput) collNameInput.value = collData ? collData.name : '';
-  if (collDescInput) collDescInput.value = collData ? (collData.description || '') : '';
-  if (collModalTitle) collModalTitle.innerText = collData ? "問題集の編集" : "新しい問題集の作成";
-  
-  const listEl = document.getElementById('coll-problems-checkbox-list');
-  if (!listEl) return;
-  listEl.innerHTML = '';
-  const selectedIds = collData && collData.documentIds ? collData.documentIds : [];
-
-  allDocuments.forEach(doc => {
-    if (doc.isDeleted) return;
-    const label = document.createElement('label');
-    label.className = "flex items-center gap-2 p-1 hover:bg-white rounded cursor-pointer";
-    const isChecked = selectedIds.includes(doc.id);
-    label.innerHTML = `<input type="checkbox" value="${doc.id}" ${isChecked ? 'checked' : ''} class="rounded"/><span class="truncate">${doc.title}</span>`;
-    listEl.appendChild(label);
-  });
-  const modal = document.getElementById('collection-edit-modal');
-  if (modal) modal.classList.remove('hidden');
-}
-
-safeListen('close-coll-modal', 'click', () => {
-  const modal = document.getElementById('collection-edit-modal');
-  if (modal) modal.classList.add('hidden');
-});
-
-safeListen('save-coll-modal-btn', 'click', async () => {
-  if (!currentUser) return;
-  const name = document.getElementById('coll-name-input')?.value.trim() || "";
-  const description = document.getElementById('coll-desc-input')?.value.trim() || "";
-  if (!name) { alert("問題集名を入力してください。"); return; }
-  const checkedBoxes = document.querySelectorAll('#coll-problems-checkbox-list input[type="checkbox"]:checked');
-  const documentIds = Array.from(checkedBoxes).map(b => b.value);
-  const editingId = document.getElementById('editing-coll-id')?.value || "";
-  const collId = editingId ? editingId : `coll_${Date.now()}`;
-
-  await setDoc(doc(db, "users", currentUser.uid, "collections", collId), { name, description, documentIds, updatedAt: Date.now(), isDeleted: false }, { merge: true });
-  const modal = document.getElementById('collection-edit-modal');
-  if (modal) modal.classList.add('hidden');
-});
-
-function startCollectionPlay(collData) {
-  const docs = collData.documentIds.map(id => allDocuments.find(d => d.id === id && !d.isDeleted)).filter(Boolean);
-  if (docs.length === 0) { alert("問題集に有効な問題が含まれていません。"); return; }
-  collectionPlayList = docs;
-  collectionPlayIndex = 0;
-  isPlayingCollection = true;
-
-  ['view-mode-container', 'table-player-container', 'kanji-player-container', 'refresh-mode-container'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.add('hidden');
-  });
-  const collPlayer = document.getElementById('collection-player-container');
-  if (collPlayer) collPlayer.classList.remove('hidden');
-  
-  const titleEl = document.getElementById('collection-player-title');
-  if (titleEl) titleEl.innerText = collData.name;
-  const descEl = document.getElementById('collection-player-desc');
-  if (descEl) descEl.innerText = collData.description || '';
-  
-  // 狭い画面ではコンテンツ表示時にサイドバーを自動でたたむ
-  if (window.innerWidth < 768) {
-    const sb = document.getElementById('sidebar');
-    if (sb) sb.classList.add('collapsed');
-  }
-
-  renderCollectionPlayerCurrent();
-}
-
-function renderCollectionPlayerCurrent() {
-  const docData = collectionPlayList[collectionPlayIndex];
-  currentDocData = docData;
-  const prog = document.getElementById('coll-progress-badge');
-  if (prog) prog.innerText = `${collectionPlayIndex + 1} / ${collectionPlayList.length}`;
-  const qArea = document.getElementById('coll-q-display-area');
-  if (qArea) renderPaneContentForContainer(qArea, docData.questionText, docData.questionMaterials);
-  
-  const collAnsPane = document.getElementById('coll-answer-pane');
-  const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
-  if (isContinuousAnswerOn) {
-    if (collAnsPane) collAnsPane.classList.remove('hidden');
-    const aArea = document.getElementById('coll-a-display-area');
-    if (aArea) renderPaneContentForContainer(aArea, docData.answerText, docData.answerMaterials, "解答解説なし");
-    if (toggleCollAnswerBtn) toggleCollAnswerBtn.innerText = "💡 解答解説を隠す";
+    actions.append(
+      button(`間違えた${wrong.length}問を再演習`, () =>
+        startSession(finished.deck, wrong)
+      )
+    );
   } else {
-    if (collAnsPane) collAnsPane.classList.add('hidden');
-    if (toggleCollAnswerBtn) toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
+    panel.append(el("p", "", "全問正解です。"));
   }
+
+  actions.append(
+    button("演習条件に戻る", () =>
+      renderPracticeSetup(finished.deck.id), "secondary"),
+
+    button("ホームに戻る", () =>
+      navigate("home"), "secondary")
+  );
+
+  panel.append(actions);
+  main.append(panel);
 }
 
-safeListen('coll-next-btn', 'click', () => {
-  if (collectionPlayIndex < collectionPlayList.length - 1) { collectionPlayIndex++; renderCollectionPlayerCurrent(); }
-  else { alert("問題集の最後の問題です！"); }
-});
+/* ==========================================
+   問題別成績一覧
+========================================== */
 
-safeListen('coll-prev-btn', 'click', () => {
-  if (collectionPlayIndex > 0) { collectionPlayIndex--; renderCollectionPlayerCurrent(); }
-});
+async function renderStatistics(id) {
+  const deck = await loadDeck(id);
+  const questions = await loadQuestions(id);
 
-safeListen('exit-collection-btn', 'click', () => {
-  isPlayingCollection = false;
-  const collPlayer = document.getElementById('collection-player-container');
-  if (collPlayer) collPlayer.classList.add('hidden');
-  const viewMode = document.getElementById('view-mode-container');
-  if (viewMode) viewMode.classList.remove('hidden');
-  clearDocumentView();
-  
-  if (window.innerWidth < 768) {
-    const sb = document.getElementById('sidebar');
-    if (sb) sb.classList.remove('collapsed');
-  }
-});
+  clearMain();
 
-const answerPane = document.getElementById('answer-pane');
-const toggleAnswerBtn = document.getElementById('toggle-answer-pane-btn');
-safeListen('toggle-answer-pane-btn', 'click', () => {
-  if (answerPane) answerPane.classList.toggle('hidden');
-  if (toggleAnswerBtn && answerPane) {
-    toggleAnswerBtn.innerText = answerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
-  }
-});
-safeListen('close-answer-pane-btn', 'click', () => {
-  if (answerPane) answerPane.classList.add('hidden');
-  if (toggleAnswerBtn) toggleAnswerBtn.innerText = "💡 解答解説を表示";
-});
+  main.append(
+    pageHeading(
+      "問題別成績",
+      button("演習", () => renderPracticeSetup(id)),
+      button("ホーム", () => navigate("home"), "secondary")
+    ),
+    el("p", "muted", deck.name)
+  );
 
-const collAnswerPane = document.getElementById('coll-answer-pane');
-const toggleCollAnswerBtn = document.getElementById('toggle-coll-answer-btn');
-safeListen('toggle-coll-answer-btn', 'click', () => {
-  if (collAnswerPane) collAnswerPane.classList.toggle('hidden');
-  if (toggleCollAnswerBtn && collAnswerPane) {
-    toggleCollAnswerBtn.innerText = collAnswerPane.classList.contains('hidden') ? "💡 解答解説を表示" : "💡 解答解説を隠す";
-  }
-  if (collAnswerPane && !collAnswerPane.classList.contains('hidden') && currentDocData) {
-    const aArea = document.getElementById('coll-a-display-area');
-    if (aArea) renderPaneContentForContainer(aArea, currentDocData.answerText, currentDocData.answerMaterials, "解答解説なし");
-  }
-});
-safeListen('close-coll-answer-pane-btn', 'click', () => {
-  if (collAnswerPane) collAnswerPane.classList.add('hidden');
-  if (toggleCollAnswerBtn) toggleCollAnswerBtn.innerText = "💡 解答解説を表示";
-});
+  const panel = el("section", "panel");
+  const wrap = el("div", "table-wrap");
+  const table = el("table");
 
-safeListen('toggle-continuous-answer-btn', 'click', () => {
-  isContinuousAnswerOn = !isContinuousAnswerOn;
-  const statusText = document.getElementById('continuous-status-text');
-  if (statusText) {
-    statusText.innerText = isContinuousAnswerOn ? "ON" : "OFF";
-    statusText.className = isContinuousAnswerOn ? "text-emerald-600 font-bold" : "text-gray-500 font-semibold";
-  }
-  if (isPlayingCollection) renderCollectionPlayerCurrent();
-});
+  const headings = [
+    "No.", "問題", "単元", "重要度",
+    "自分・正解", "自分・不正解",
+    "全体・正解", "全体・不正解"
+  ];
 
-safeListen('header-menu-btn', 'click', () => {
-  if (!currentDocData && !isPlayingCollection) { alert("問題を選択してください。"); return; }
-  const statsModal = document.getElementById('stats-modal');
-  if (statsModal) statsModal.classList.remove('hidden');
-  updateModalStats();
-});
+  const head = el("tr");
 
-safeListen('close-stats-modal', 'click', () => {
-  const statsModal = document.getElementById('stats-modal');
-  if (statsModal) statsModal.classList.add('hidden');
-});
+  headings.forEach(title => head.append(el("th", "", title)));
 
-function updateModalStats() {
-  const docData = currentDocData;
-  if (!docData) return;
-  const targetTitle = document.getElementById('modal-target-title');
-  if (targetTitle) targetTitle.innerText = docData.title;
-  const container = document.getElementById('subquestion-stats-container');
-  if (!container) return;
-  container.innerHTML = `
-    <div class="space-y-3">
-      <div class="flex justify-between items-center bg-green-50 p-3 rounded">
-        <span class="font-bold text-green-800">⭕ 正解数</span>
-        <input type="number" id="stat-correct-input" value="${docData.stats?.correct || 0}" class="w-20 border rounded p-1 text-center"/>
-      </div>
-      <div class="flex justify-between items-center bg-red-50 p-3 rounded">
-        <span class="font-bold text-red-800">❌ 誤答数</span>
-        <input type="number" id="stat-incorrect-input" value="${docData.stats?.incorrect || 0}" class="w-20 border rounded p-1 text-center"/>
-      </div>
-    </div>
-  `;
-}
+  const thead = el("thead");
+  thead.append(head);
 
-safeListen('btn-record-commit', 'click', async () => {
-  if (!currentUser || !currentDocData) return;
-  const c = parseInt(document.getElementById('stat-correct-input')?.value) || 0;
-  const i = parseInt(document.getElementById('stat-incorrect-input')?.value) || 0;
-  currentDocData.stats = { correct: c, incorrect: i };
-  await setDoc(doc(db, "users", currentUser.uid, "documents", currentDocData.id), { stats: currentDocData.stats }, { merge: true });
-  const statsModal = document.getElementById('stats-modal');
-  if (statsModal) statsModal.classList.add('hidden');
-});
+  table.append(thead);
 
-function selectDocument(docData) {
-  selectedDocId = docData.id;
-  currentDocData = docData;
-  const titleEl = document.getElementById('doc-title');
-  if (titleEl) titleEl.innerText = docData.title;
-  const editBtn = document.getElementById('edit-current-btn');
-  if (editBtn) editBtn.classList.remove('hidden');
-  const qArea = document.getElementById('question-display-area');
-  if (qArea) renderPaneContentForContainer(qArea, docData.questionText, docData.questionMaterials);
-  if (answerPane) answerPane.classList.add('hidden');
-  if (toggleAnswerBtn) {
-    toggleAnswerBtn.classList.remove('hidden');
-    toggleAnswerBtn.innerText = "💡 解答解説を表示";
-  }
+  const body = el("tbody");
+  table.append(body);
 
-  // 狭い画面ではコンテンツ選択時にサイドバーを自動でたたむ
-  if (window.innerWidth < 768) {
-    const sb = document.getElementById('sidebar');
-    if (sb) sb.classList.add('collapsed');
-  }
-}
+  wrap.append(table);
+  panel.append(wrap);
 
-function clearDocumentView() {
-  selectedDocId = null;
-  currentDocData = null;
-  const titleEl = document.getElementById('doc-title');
-  if (titleEl) titleEl.innerText = "左のリストから問題を選択してください";
-  const editBtn = document.getElementById('edit-current-btn');
-  if (editBtn) editBtn.classList.add('hidden');
-  const qArea = document.getElementById('question-display-area');
-  if (qArea) qArea.innerHTML = '<div class="text-center text-gray-400 py-20"><p>問題データが選択されていません。</p></div>';
-  if (answerPane) answerPane.classList.add('hidden');
-  if (toggleAnswerBtn) toggleAnswerBtn.classList.add('hidden');
-}
+  main.append(panel);
 
-function renderPaneContentForContainer(container, text, materials, fallbackText = "問題文なし") {
-  if (!container) return;
-  container.innerHTML = '';
-  if (text) {
-    const p = document.createElement('div');
-    p.className = "text-sm whitespace-pre-wrap leading-relaxed text-slate-800";
-    p.innerText = text;
-    container.appendChild(p);
-  }
-  if (materials && materials.length > 0) {
-    materials.forEach(mat => {
-      const img = document.createElement('img');
-      img.src = mat;
-      img.className = "max-w-full rounded border my-2";
-      container.appendChild(img);
+  // 同時読み込み数を抑える
+  for (let i = 0; i < questions.length; i += 10) {
+    const group = questions.slice(i, i + 10);
+
+    const results = await Promise.all(
+      group.map(q => getStatistics(id, q.id))
+    );
+
+    group.forEach((q, index) => {
+      const stats = results[index];
+
+      const values = [
+        i + index + 1,
+        q.question,
+        q.unit,
+        q.importance,
+        stats.personal.correct,
+        stats.personal.incorrect,
+        stats.total.correct,
+        stats.total.incorrect
+      ];
+
+      const row = el("tr");
+
+      values.forEach(value => {
+        row.append(el("td", "", String(value)));
+      });
+
+      body.append(row);
     });
-  }
-  if (!text && (!materials || materials.length === 0)) {
-    container.innerHTML = `<p class="text-gray-400 text-xs italic">${fallbackText}</p>`;
   }
 }
