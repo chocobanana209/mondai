@@ -3858,3 +3858,3692 @@ function createImportPanel(deck) {
 
   return panel;
 }
+
+
+/* ==========================================
+   ドラッグによる並び替え
+========================================== */
+
+async function renderReorder(id) {
+
+  const deck = await loadDeck(id);
+
+  if (!online() || !canEdit(deck)) {
+    throw new Error("編集権限がありません。");
+  }
+
+  const original = await loadQuestions(
+    deck,
+    true
+  );
+
+  let items = [...original];
+
+  let dirty = false;
+
+  const content = page("問題の並び替え");
+
+  const toolbar = el("div", "reorder-toolbar");
+
+  const actions = el("div", "actions");
+
+  const status = el("p", "muted");
+
+  const list = el("div", "reorder-list");
+
+  content.append(
+    toolbar,
+    list
+  );
+
+  function updateStatus() {
+
+    dirty = items.some(
+
+      (q, index) => q.id !== original[index]?.id
+
+    );
+
+    status.textContent =
+
+      `${items.length}問 ／ ` +
+
+      (dirty ? "未保存の変更あり" : "変更なし");
+  }
+
+  function refreshNumbers() {
+
+    [...list.children].forEach((row, index) => {
+
+      row.querySelector(
+        ".reorder-number"
+      ).textContent = index + 1;
+
+    });
+
+    items = [...list.children].map(
+
+      row => items.find(
+        q => q.id === row.dataset.id
+      )
+
+    );
+
+    updateStatus();
+  }
+
+  function moveTo(questionId, destination) {
+
+    const from = items.findIndex(
+      q => q.id === questionId
+    );
+
+    if (from < 0) return;
+
+    const to = Math.max(
+
+      0,
+
+      Math.min(
+        items.length - 1,
+        destination
+      )
+
+    );
+
+    if (from === to) return;
+
+    const [q] = items.splice(from, 1);
+
+    items.splice(to, 0, q);
+
+    draw();
+
+    const row = [...list.children].find(
+      node => node.dataset.id === questionId
+    );
+
+    row?.scrollIntoView({
+
+      block: "nearest"
+
+    });
+  }
+
+  function draw() {
+
+    list.replaceChildren();
+
+    items.forEach((q, index) => {
+
+      const row = el("div", "reorder-item");
+
+      row.dataset.id = q.id;
+
+      const handle = el(
+        "button",
+        "reorder-handle",
+        "⠿"
+      );
+
+      handle.type = "button";
+
+      handle.setAttribute(
+        "aria-label",
+        "ドラッグして移動"
+      );
+
+      const number = el(
+
+        "span",
+        "reorder-number",
+        index + 1
+
+      );
+
+      const body = el("div");
+
+      body.append(
+
+        el(
+          "div",
+          "reorder-question",
+          q.question
+        ),
+
+        el(
+          "div",
+          "reorder-answer",
+          q.answer
+        )
+
+      );
+
+      const move = button("移動", () => {
+
+        const from = items.findIndex(
+          item => item.id === q.id
+        );
+
+        const value = prompt(
+
+          `移動先の番号（1〜${items.length}）`,
+
+          String(from + 1)
+
+        );
+
+        if (value === null) return;
+
+        const destination = Number(value);
+
+        if (
+          !Number.isInteger(destination) ||
+          destination < 1 ||
+          destination > items.length
+        ) {
+
+          throw new Error(
+            "正しい移動先番号を入力してください。"
+          );
+        }
+
+        moveTo(
+          q.id,
+          destination - 1
+        );
+
+      }, "secondary small");
+
+      /*
+        キーボード操作にも対応。
+      */
+
+      handle.onkeydown = event => {
+
+        const from = items.findIndex(
+          item => item.id === q.id
+        );
+
+        if (event.key === "ArrowUp") {
+
+          event.preventDefault();
+
+          moveTo(q.id, from - 1);
+
+        } else if (event.key === "ArrowDown") {
+
+          event.preventDefault();
+
+          moveTo(q.id, from + 1);
+
+        }
+      };
+
+      row.append(
+        handle,
+        number,
+        body,
+        move
+      );
+
+      list.append(row);
+    });
+
+    updateStatus();
+  }
+
+  /*
+    Pointer Eventsを使用するため、
+    マウス・タッチ・トラックパッドに対応。
+  */
+
+  let drag = null;
+
+  let frame = 0;
+
+  function moveDraggedRow() {
+
+    if (!drag) return;
+
+    const bounds = main.getBoundingClientRect();
+
+    const x = Math.min(
+
+      window.innerWidth - 5,
+
+      Math.max(5, drag.x)
+
+    );
+
+    const y = Math.min(
+
+      bounds.bottom - 5,
+
+      Math.max(
+        bounds.top + 5,
+        drag.y
+      )
+
+    );
+
+    const target = document
+
+      .elementFromPoint(x, y)
+
+      ?.closest(".reorder-item");
+
+    if (
+      target &&
+      target.parentElement === list &&
+      target !== drag.row
+    ) {
+
+      const rect =
+        target.getBoundingClientRect();
+
+      const after =
+        y > rect.top + rect.height / 2;
+
+      const before = after
+
+        ? target.nextSibling
+
+        : target;
+
+      if (before !== drag.row) {
+
+        list.insertBefore(
+          drag.row,
+          before
+        );
+
+        refreshNumbers();
+      }
+    }
+  }
+
+  function animateDrag() {
+
+    if (!drag) return;
+
+    if (!list.isConnected) {
+
+      finishDrag(true);
+
+      return;
+    }
+
+    const bounds =
+      main.getBoundingClientRect();
+
+    const edge = 85;
+
+    let speed = 0;
+
+    if (drag.y < bounds.top + edge) {
+
+      speed = -Math.min(
+
+        24,
+
+        (bounds.top + edge - drag.y) / 3
+
+      );
+
+    } else if (
+      drag.y > bounds.bottom - edge
+    ) {
+
+      speed = Math.min(
+
+        24,
+
+        (drag.y - bounds.bottom + edge) / 3
+
+      );
+    }
+
+    if (speed) {
+
+      main.scrollTop += speed;
+
+      moveDraggedRow();
+    }
+
+    frame = requestAnimationFrame(
+      animateDrag
+    );
+  }
+
+  function finishDrag(cancelled = false) {
+
+    if (!drag) return;
+
+    const previous = drag;
+
+    drag = null;
+
+    cancelAnimationFrame(frame);
+
+    previous.ghost.remove();
+
+    previous.row.classList.remove(
+      "drag-source"
+    );
+
+    if (
+      list.hasPointerCapture(
+        previous.pointerId
+      )
+    ) {
+
+      list.releasePointerCapture(
+        previous.pointerId
+      );
+    }
+
+    if (cancelled) {
+
+      items = previous.before;
+
+      draw();
+
+    } else {
+
+      refreshNumbers();
+    }
+  }
+
+  list.addEventListener("pointerdown", event => {
+
+    const handle = event.target.closest(
+      ".reorder-handle"
+    );
+
+    if (!handle || drag || busy) return;
+
+    if (
+      event.pointerType === "mouse" &&
+      event.button !== 0
+    ) return;
+
+    event.preventDefault();
+
+    const row = handle.closest(
+      ".reorder-item"
+    );
+
+    const q = items.find(
+
+      item => item.id === row.dataset.id
+
+    );
+
+    const rect =
+      row.getBoundingClientRect();
+
+    const ghost = el(
+
+      "div",
+      "drag-ghost",
+      q.question
+
+    );
+
+    ghost.style.width =
+
+      `${Math.min(rect.width, 500)}px`;
+
+    ghost.style.left =
+
+      `${Math.max(8, rect.left)}px`;
+
+    ghost.style.top =
+
+      `${event.clientY - 25}px`;
+
+    document.body.append(ghost);
+
+    drag = {
+
+      row,
+      ghost,
+
+      pointerId: event.pointerId,
+
+      x: event.clientX,
+      y: event.clientY,
+
+      before: [...items]
+    };
+
+    row.classList.add("drag-source");
+
+    /*
+      移動される行ではなくリスト本体に
+      ポインターを捕捉させる。
+    */
+
+    list.setPointerCapture(
+      event.pointerId
+    );
+
+    frame = requestAnimationFrame(
+      animateDrag
+    );
+
+  });
+
+  list.addEventListener("pointermove", event => {
+
+    if (
+      !drag ||
+      event.pointerId !== drag.pointerId
+    ) return;
+
+    event.preventDefault();
+
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+
+    drag.ghost.style.top =
+
+      `${event.clientY - 25}px`;
+
+    moveDraggedRow();
+
+  }, { passive: false });
+
+  list.addEventListener("pointerup", event => {
+
+    if (
+      drag &&
+      drag.pointerId === event.pointerId
+    ) {
+
+      finishDrag(false);
+    }
+
+  });
+
+  list.addEventListener("pointercancel", () => {
+
+    finishDrag(true);
+
+  });
+
+  list.addEventListener("lostpointercapture", () => {
+
+    if (drag) {
+      finishDrag(true);
+    }
+
+  });
+
+  actions.append(
+
+    button("保存", async () => {
+
+      if (drag) return;
+
+      if (!dirty) {
+
+        notify("変更はありません。");
+
+        return;
+      }
+
+      const changes = [];
+
+      items.forEach((q, index) => {
+
+        const position = index + 1;
+
+        if (q.position !== position) {
+
+          changes.push({
+
+            type: "update",
+
+            id: q.id,
+
+            values: {
+              position
+            }
+
+          });
+        }
+      });
+
+      await applyChanges(
+
+        deck,
+        original,
+        changes
+
+      );
+
+      await renderEditor(id);
+
+    }),
+
+    button("元に戻す", () => {
+
+      if (drag) {
+        finishDrag(true);
+      }
+
+      items = [...original];
+
+      draw();
+
+    }, "secondary"),
+
+    button("戻る", async () => {
+
+      if (
+        dirty &&
+        !confirm("未保存の並び替えを破棄しますか？")
+      ) return;
+
+      await renderEditor(id);
+
+    }, "secondary")
+
+  );
+
+  toolbar.append(
+
+    actions,
+    status,
+
+    el(
+
+      "p",
+      "muted",
+
+      "左のハンドルをドラッグして移動します。" +
+      "長距離の移動には「移動」ボタンを使用できます。"
+
+    )
+
+  );
+
+  draw();
+}
+
+
+/* ==========================================
+   問題編集画面
+========================================== */
+
+async function renderEditor(id, force = false) {
+
+  const deck = await loadDeck(id);
+
+  if (!online() || !canEdit(deck)) {
+    throw new Error("編集権限がありません。");
+  }
+
+  const questions = await loadQuestions(
+    deck,
+    force
+  );
+
+  const content = page(
+
+    deck.name,
+
+    button(
+      "演習",
+      () => renderPracticeSetup(id)
+    ),
+
+    button(
+      "並び替え",
+      () => renderReorder(id),
+      "secondary"
+    ),
+
+    button(
+      "更新",
+      () => renderEditor(id, true),
+      "secondary"
+    ),
+
+    button(
+
+      "戻る",
+
+      () => renderDeckList(
+        isOwner(deck) ? "mine" : "shared"
+      ),
+
+      "secondary"
+
+    )
+
+  );
+
+  /* 集約 */
+
+  const packPanel = el("section", "panel");
+
+  packPanel.append(
+
+    el("h2", "", "問題データの最適化"),
+
+    el(
+
+      "p",
+      "muted",
+
+      deck.packGeneration
+
+        ? `集約済み：${deck.packCount}ドキュメント`
+
+        : "未集約：通常形式を使用しています。"
+
+    ),
+
+    button("集約データを作成", async () => {
+
+      if (!confirm(
+
+        "問題を最大50問単位で集約します。" +
+        "既存の問題IDと成績は維持されます。"
+
+      )) return;
+
+      const latest = await loadDeck(id);
+
+      const items = await loadQuestions(
+        latest,
+        true
+      );
+
+      const count = await publishPacks(
+        latest,
+        items
+      );
+
+      notify(
+        `${items.length}問を${count}個に集約しました。`
+      );
+
+      await renderEditor(id);
+
+    }, "secondary")
+
+  );
+
+  content.append(packPanel);
+
+  /* CSV */
+
+  content.append(
+    createImportPanel(deck)
+  );
+
+  /* 手動追加 */
+
+  const addPanel = el("section", "panel");
+
+  const controls = questionControls();
+
+  const fields = el("div", "form-grid");
+
+  for (const [key, title] of FIELDS) {
+
+    fields.append(
+      field(title, controls[key])
+    );
+  }
+
+  addPanel.append(
+
+    el("h2", "", "問題を追加"),
+
+    fields,
+
+    button("追加", async () => {
+
+      const data = validateQuestion(
+        controlValues(controls)
+      );
+
+      const position = questions.reduce(
+
+        (max, q) => Math.max(
+          max,
+          q.position
+        ),
+
+        0
+
+      ) + 1;
+
+      await applyChanges(
+
+        deck,
+        questions,
+
+        [{
+
+          type: "create",
+
+          id: newId(),
+
+          values: {
+
+            ...data,
+
+            position,
+
+            deleted: false
+          }
+
+        }]
+
+      );
+
+      await renderEditor(id);
+
+    })
+
+  );
+
+  content.append(addPanel);
+
+  /* 問題一覧 */
+
+  const list = el("section", "panel");
+
+  const search = input(
+
+    "",
+
+    "問題・解答・単元を検索"
+
+  );
+
+  const wrap = el("div", "table-wrap");
+
+  const paging = el("div", "actions");
+
+  const label = el("span", "muted");
+
+  let current = 0;
+
+  const pageSize = 50;
+
+  function draw() {
+
+    wrap.replaceChildren();
+
+    const keyword =
+      search.value.toLowerCase();
+
+    const filtered = questions.filter(q =>
+
+      `${q.question} ${q.answer} ${q.unit}`
+
+        .toLowerCase()
+
+        .includes(keyword)
+
+    );
+
+    const pages = Math.max(
+
+      1,
+
+      Math.ceil(
+        filtered.length / pageSize
+      )
+
+    );
+
+    current = Math.min(
+      current,
+      pages - 1
+    );
+
+    label.textContent =
+
+      `${current + 1}/${pages}`;
+
+    const table = el("table");
+
+    const thead = el("thead");
+
+    const head = el("tr");
+
+    for (const title of [
+
+      "No.",
+
+      ...FIELDS.map(x => x[1]),
+
+      "操作"
+
+    ]) {
+
+      head.append(
+        el("th", "", title)
+      );
+    }
+
+    thead.append(head);
+
+    table.append(thead);
+
+    const tbody = el("tbody");
+
+    const shown = filtered.slice(
+
+      current * pageSize,
+
+      (current + 1) * pageSize
+
+    );
+
+    for (const q of shown) {
+
+      const row = el("tr");
+
+      const edit = questionControls(q);
+
+      row.append(
+
+        el(
+          "td",
+          "",
+          q.position
+        )
+
+      );
+
+      for (const [key] of FIELDS) {
+
+        const cell = el("td");
+
+        cell.append(edit[key]);
+
+        row.append(cell);
+      }
+
+      const operations = el("td");
+
+      operations.append(
+
+        button("保存", async () => {
+
+          const data = validateQuestion(
+            controlValues(edit)
+          );
+
+          const values = {};
+
+          for (const [key] of FIELDS) {
+
+            if (data[key] !== q[key]) {
+
+              values[key] = data[key];
+            }
+          }
+
+          if (!Object.keys(values).length) {
+
+            notify("変更はありません。");
+
+            return;
+          }
+
+          if (
+            CORE_FIELDS.every(
+
+              key => normalize(data[key]) !==
+                normalize(q[key])
+
+            )
+          ) {
+
+            if (!confirm(
+
+              "問題・解答・解説がすべて変更されています。" +
+              "別問題として登録しますか？"
+
+            )) return;
+
+            await applyChanges(
+
+              deck,
+              questions,
+
+              [
+
+                {
+
+                  type: "create",
+
+                  id: newId(),
+
+                  values: {
+
+                    ...data,
+
+                    position: q.position,
+
+                    deleted: false
+                  }
+
+                },
+
+                {
+
+                  type: "update",
+
+                  id: q.id,
+
+                  values: {
+
+                    deleted: true
+                  }
+
+                }
+
+              ]
+
+            );
+
+          } else {
+
+            await applyChanges(
+
+              deck,
+              questions,
+
+              [{
+
+                type: "update",
+
+                id: q.id,
+
+                values
+
+              }]
+
+            );
+          }
+
+          await renderEditor(id);
+
+        }, "secondary small"),
+
+        button("削除", async () => {
+
+          if (!confirm(
+            "この問題を削除しますか？"
+          )) return;
+
+          await applyChanges(
+
+            deck,
+            questions,
+
+            [{
+
+              type: "update",
+
+              id: q.id,
+
+              values: {
+                deleted: true
+              }
+
+            }]
+
+          );
+
+          await renderEditor(id);
+
+        }, "danger small")
+
+      );
+
+      row.append(operations);
+
+      tbody.append(row);
+    }
+
+    table.append(tbody);
+
+    wrap.append(table);
+  }
+
+  search.oninput = () => {
+
+    current = 0;
+
+    draw();
+  };
+
+  paging.append(
+
+    button("前へ", () => {
+
+      current = Math.max(
+        0,
+        current - 1
+      );
+
+      draw();
+
+    }, "secondary"),
+
+    label,
+
+    button("次へ", () => {
+
+      current++;
+
+      draw();
+
+    }, "secondary")
+
+  );
+
+  list.append(
+
+    el(
+      "h2",
+      "",
+      `登録問題：${questions.length}問`
+    ),
+
+    search,
+    paging,
+    wrap
+
+  );
+
+  content.append(list);
+
+  draw();
+}
+
+
+/* ==========================================
+   未同期成績キュー
+========================================== */
+
+async function pendingEvents(userId = uid()) {
+
+  const rows = await localPrefix(
+
+    `out:${userId}:`
+
+  );
+
+  return rows
+
+    .map(row => row.value)
+
+    .sort((a, b) => a.time - b.time);
+}
+
+async function refreshPending() {
+
+  if (!user) return;
+
+  const userId = uid();
+
+  const entries = await pendingEvents(
+    userId
+  );
+
+  if (user?.uid !== userId) return;
+
+  pendingCount = entries.length;
+
+  updateSyncStatus();
+}
+
+function updateSyncStatus() {
+
+  const node = $("sync-status");
+
+  node.className = "";
+
+  if (!online()) {
+
+    node.textContent =
+
+      `オフライン・未同期 ${pendingCount}件`;
+
+    node.className = "pending";
+
+  } else if (syncJob) {
+
+    node.textContent =
+
+      `同期中・残り ${pendingCount}件`;
+
+    node.className = "pending";
+
+  } else if (syncError) {
+
+    node.textContent =
+
+      `同期失敗・未同期 ${pendingCount}件`;
+
+    node.className = "error";
+
+  } else if (pendingCount) {
+
+    node.textContent =
+
+      `未同期：${pendingCount}件`;
+
+    node.className = "pending";
+
+  } else {
+
+    node.textContent = "同期済み";
+
+    node.className = "synced";
+  }
+}
+
+function timeout(promise, ms) {
+
+  let timer;
+
+  return Promise.race([
+
+    promise,
+
+    new Promise((_, reject) => {
+
+      timer = setTimeout(
+
+        () => reject(
+
+          new Error(
+            "通信がタイムアウトしました。"
+          )
+
+        ),
+
+        ms
+
+      );
+
+    })
+
+  ]).finally(() => clearTimeout(timer));
+}
+
+
+/* ==========================================
+   正誤記録の送信
+
+   同期IDを使用して二重加算を防止する。
+========================================== */
+
+async function sendEvent(event) {
+
+  if (auth.currentUser?.uid !== event.uid) {
+    throw new Error("アカウントが変更されました。");
+  }
+
+  const personal = personalRef(
+
+    event.deckId,
+    event.questionId,
+    event.uid
+
+  );
+
+  const total = totalRef(
+
+    event.deckId,
+    event.questionId
+
+  );
+
+  const receipt = receiptRef(event);
+
+  const correct =
+    event.correct ? 1 : 0;
+
+  const incorrect =
+    event.correct ? 0 : 1;
+
+  const batch = writeBatch(db);
+
+  batch.set(
+
+    personal,
+
+    {
+
+      correct: increment(correct),
+
+      incorrect: increment(incorrect),
+
+      lastEvent: event.id
+
+    },
+
+    { merge: true }
+
+  );
+
+  batch.set(
+
+    total,
+
+    {
+
+      correct: increment(correct),
+
+      incorrect: increment(incorrect),
+
+      lastUid: event.uid,
+
+      lastEvent: event.id
+
+    },
+
+    { merge: true }
+
+  );
+
+  batch.set(
+
+    receipt,
+
+    {
+
+      correct: event.correct,
+
+      createdAt: serverTimestamp()
+
+    }
+
+  );
+
+  try {
+
+    await timeout(
+
+      batch.commit(),
+
+      CONFIG.SYNC_TIMEOUT
+
+    );
+
+    wrote(
+      "正誤記録・同期ID",
+      3
+    );
+
+  } catch (error) {
+
+    /*
+      タイムアウト等で実際の保存結果が
+      不明な場合は同期IDを確認する。
+    */
+
+    let snap;
+
+    try {
+
+      snap = await timeout(
+
+        readDoc(
+          receipt,
+          "同期ID確認"
+        ),
+
+        CONFIG.SYNC_TIMEOUT
+
+      );
+
+    } catch {
+
+      throw error;
+    }
+
+    if (
+      !snap.exists() ||
+      snap.data().correct !== event.correct
+    ) {
+
+      throw error;
+    }
+  }
+
+  await localDelete(
+    outboxKey(event)
+  );
+}
+
+
+/* ==========================================
+   一括同期
+========================================== */
+
+async function syncPending() {
+
+  if (!user || !online()) return false;
+
+  if (syncJob) {
+    return syncJob;
+  }
+
+  const userId = uid();
+
+  syncError = "";
+
+  syncJob = (async () => {
+
+    let failed = 0;
+
+    const events = await pendingEvents(
+      userId
+    );
+
+    /*
+      一度に5記録ずつ処理。
+
+      同一問題が同じ処理グループに
+      重複しないようにする。
+    */
+
+    const remaining = [...events];
+
+    while (remaining.length) {
+
+      if (
+        !online() ||
+        auth.currentUser?.uid !== userId
+      ) {
+
+        throw new Error("同期を中断しました。");
+      }
+
+      const group = [];
+
+      const keys = new Set();
+
+      for (
+        let i = 0;
+        i < remaining.length &&
+        group.length < CONFIG.SYNC_PARALLEL;
+      ) {
+
+        const event = remaining[i];
+
+        const key =
+
+          `${event.deckId}:${event.questionId}`;
+
+        if (keys.has(key)) {
+
+          i++;
+
+          continue;
+        }
+
+        keys.add(key);
+
+        group.push(event);
+
+        remaining.splice(i, 1);
+      }
+
+      const results = await Promise.allSettled(
+
+        group.map(sendEvent)
+
+      );
+
+      for (const result of results) {
+
+        if (result.status === "rejected") {
+
+          failed++;
+
+          console.warn(
+            "同期失敗",
+            result.reason
+          );
+        }
+      }
+
+      await refreshPending();
+    }
+
+    if (failed) {
+
+      syncError =
+
+        `${failed}件を同期できませんでした。`;
+
+      return false;
+    }
+
+    return true;
+
+  })();
+
+  updateSyncStatus();
+
+  try {
+
+    return await syncJob;
+
+  } catch (error) {
+
+    console.error(error);
+
+    syncError = error.message;
+
+    return false;
+
+  } finally {
+
+    syncJob = null;
+
+    await refreshPending();
+
+    updateSyncStatus();
+  }
+}
+
+$("sync-now").onclick = () => act(async () => {
+
+  const result = await syncPending();
+
+  notify(
+
+    result
+
+      ? "同期しました。"
+
+      : "未同期記録は端末に保持されています。",
+
+    !result
+
+  );
+});
+
+window.addEventListener("online", () => {
+
+  updateSyncStatus();
+
+  syncPending().catch(showError);
+
+});
+
+window.addEventListener(
+
+  "offline",
+
+  updateSyncStatus
+
+);
+
+
+/* ==========================================
+   成績取得
+========================================== */
+
+function counts(snap) {
+
+  const data = snap.exists()
+    ? snap.data()
+    : {};
+
+  return {
+
+    correct: data.correct || 0,
+
+    incorrect: data.incorrect || 0
+
+  };
+}
+
+async function getStatistics(
+  deck,
+  questionId,
+  pendingSet,
+  force = false
+) {
+
+  const key = statisticsKey(
+    deck.id,
+    questionId
+  );
+
+  let cached = statsMemory.get(key);
+
+  if (!cached && canOffline(deck)) {
+
+    cached = await localGet(key);
+  }
+
+  if (
+
+    !online() ||
+
+    pendingSet.has(questionId) ||
+
+    (
+
+      !force &&
+      cached &&
+      Date.now() - cached.time <
+        CONFIG.STATS_TTL
+
+    )
+
+  ) {
+
+    if (cached) {
+
+      debug.cacheHits++;
+
+      statsMemory.set(key, cached);
+
+      return cached.value;
+    }
+
+    return null;
+  }
+
+  const [personal, total] = await Promise.all([
+
+    readDoc(
+
+      personalRef(deck.id, questionId),
+
+      "個人成績"
+
+    ),
+
+    readDoc(
+
+      totalRef(deck.id, questionId),
+
+      "全体成績"
+
+    )
+
+  ]);
+
+  const entry = {
+
+    time: Date.now(),
+
+    value: {
+
+      personal: counts(personal),
+
+      total: counts(total)
+
+    }
+  };
+
+  statsMemory.set(key, entry);
+
+  if (canOffline(deck)) {
+
+    await localPut(
+      key,
+      entry
+    );
+  }
+
+  return entry.value;
+}
+
+async function preloadStatistics(
+  deck,
+  questions,
+  force = false
+) {
+
+  const pending = await pendingEvents();
+
+  const pendingSet = new Set(
+
+    pending
+
+      .filter(
+        event => event.deckId === deck.id
+      )
+
+      .map(
+        event => event.questionId
+      )
+
+  );
+
+  for (
+    let i = 0;
+    i < questions.length;
+    i += 8
+  ) {
+
+    const chunk = questions.slice(
+      i,
+      i + 8
+    );
+
+    await Promise.all(
+
+      chunk.map(q =>
+
+        getStatistics(
+
+          deck,
+          q.id,
+          pendingSet,
+          force
+
+        ).catch(error => {
+
+          console.warn(
+
+            "成績取得失敗",
+
+            q.id,
+
+            error
+
+          );
+        })
+
+      )
+
+    );
+  }
+}
+
+
+/* ==========================================
+   演習条件
+========================================== */
+
+function shuffle(items) {
+
+  const result = [...items];
+
+  for (
+    let i = result.length - 1;
+    i > 0;
+    i--
+  ) {
+
+    const j = Math.floor(
+
+      Math.random() * (i + 1)
+
+    );
+
+    [result[i], result[j]] = [
+
+      result[j],
+      result[i]
+
+    ];
+  }
+
+  return result;
+}
+
+async function renderPracticeSetup(id) {
+
+  const deck = await loadDeck(id);
+
+  const questions = await loadQuestions(deck);
+
+  const content = page(
+
+    deck.name,
+
+    button(
+
+      "ホーム",
+
+      () => navigate("home"),
+
+      "secondary"
+
+    )
+
+  );
+
+  if (!questions.length) {
+
+    content.append(
+
+      el("p", "", "問題がありません。")
+
+    );
+
+    return;
+  }
+
+  const panel = el("section", "panel");
+
+  const mode = select([
+
+    ["normal", "通常モード"],
+
+    ["custom", "カスタムモード"]
+
+  ], "normal");
+
+  const order = select([
+
+    ["ordered", "順番（すべて）"],
+
+    ["random", "ランダム（すべて）"],
+
+    ["random20", "ランダム（20問）"]
+
+  ], "ordered");
+
+  const allStats = checkItem(
+
+    "全対象問題の成績を先に取得する",
+
+    "all",
+
+    false
+
+  );
+
+  const unitGroup = el(
+    "div",
+    "check-group"
+  );
+
+  const importanceGroup = el(
+    "div",
+    "check-group"
+  );
+
+  const customGroup = el(
+    "div",
+    "custom-list"
+  );
+
+  const units = [...new Set(
+
+    questions.map(q => q.unit)
+
+  )];
+
+  const importance = [...new Set(
+
+    questions.map(q => q.importance)
+
+  )].sort((a, b) =>
+
+    a.localeCompare(
+      b,
+      "ja",
+      { numeric: true }
+    )
+
+  );
+
+  for (const unit of units) {
+
+    unitGroup.append(
+
+      checkItem(
+        unit,
+        unit
+      )
+
+    );
+  }
+
+  for (const value of importance) {
+
+    importanceGroup.append(
+
+      checkItem(
+        value,
+        value
+      )
+
+    );
+  }
+
+  for (const q of questions) {
+
+    customGroup.append(
+
+      checkItem(
+
+        `${q.position}. ${q.question}`,
+
+        q.id,
+
+        false
+
+      )
+
+    );
+  }
+
+  const normalArea = el("div");
+
+  const customArea = el("div");
+
+  const count = el("p", "muted");
+
+  function selected() {
+
+    if (mode.value === "custom") {
+
+      const ids = selectedValues(
+        customGroup
+      );
+
+      return questions.filter(
+
+        q => ids.has(q.id)
+
+      );
+    }
+
+    const selectedUnits =
+      selectedValues(unitGroup);
+
+    const selectedImportance =
+      selectedValues(importanceGroup);
+
+    return questions.filter(q =>
+
+      selectedUnits.has(q.unit) &&
+
+      selectedImportance.has(q.importance)
+
+    );
+  }
+
+  function drawCount() {
+
+    normalArea.hidden =
+      mode.value !== "normal";
+
+    customArea.hidden =
+      mode.value !== "custom";
+
+    const amount = selected().length;
+
+    count.textContent =
+
+      `対象：${amount}問 ／ 出題：` +
+
+      (
+
+        order.value === "random20"
+
+          ? Math.min(20, amount)
+
+          : amount
+
+      ) +
+
+      "問";
+  }
+
+  function checkActions(container) {
+
+    const actions = el("div", "actions");
+
+    actions.append(
+
+      button("全選択", () => {
+
+        container
+
+          .querySelectorAll("input")
+
+          .forEach(node => {
+            node.checked = true;
+          });
+
+        drawCount();
+
+      }, "secondary small"),
+
+      button("全解除", () => {
+
+        container
+
+          .querySelectorAll("input")
+
+          .forEach(node => {
+            node.checked = false;
+          });
+
+        drawCount();
+
+      }, "secondary small")
+
+    );
+
+    return actions;
+  }
+
+  normalArea.append(
+
+    el("h3", "", "単元"),
+
+    checkActions(unitGroup),
+
+    unitGroup,
+
+    el("h3", "", "重要度"),
+
+    checkActions(importanceGroup),
+
+    importanceGroup
+
+  );
+
+  customArea.append(
+
+    checkActions(customGroup),
+
+    customGroup
+
+  );
+
+  const modeField = field(
+    "演習モード",
+    mode
+  );
+
+  modeField.classList.add(
+    "setup-control"
+  );
+
+  const orderField = field(
+    "出題順序",
+    order
+  );
+
+  orderField.classList.add(
+    "setup-control"
+  );
+
+  panel.append(
+
+    modeField,
+
+    normalArea,
+
+    customArea,
+
+    orderField,
+
+    allStats,
+
+    el(
+
+      "p",
+      "muted",
+
+      "標準では成績を50問ずつ先読みします。"
+
+    ),
+
+    count,
+
+    button("演習を開始", async () => {
+
+      let items = selected();
+
+      if (!items.length) {
+
+        throw new Error(
+          "問題を選択してください。"
+        );
+      }
+
+      if (order.value !== "ordered") {
+
+        items = shuffle(items);
+      }
+
+      if (order.value === "random20") {
+
+        items = items.slice(0, 20);
+      }
+
+      if (online()) {
+
+        const latest = await loadDeck(id);
+
+        if (
+
+          (latest.contentVersion || "") !==
+
+          (deck.contentVersion || "")
+
+        ) {
+
+          throw new Error(
+
+            "問題が変更されています。" +
+            "演習条件を開き直してください。"
+
+          );
+        }
+      }
+
+      await startSession(
+
+        deck,
+
+        items,
+
+        allStats.querySelector("input").checked
+
+      );
+
+    })
+
+  );
+
+  panel.onchange = drawCount;
+
+  content.append(panel);
+
+  drawCount();
+}
+
+
+/* ==========================================
+   演習進捗
+========================================== */
+
+function serializeSession(s) {
+
+  return {
+
+    deckId: s.deck.id,
+
+    revision:
+      s.deck.contentVersion || "",
+
+    questionIds:
+      s.questions.map(q => q.id),
+
+    index: s.index,
+
+    correct: s.correct,
+
+    wrongIds:
+      s.wrong.map(q => q.id),
+
+    revealed: s.revealed,
+
+    allStats: s.allStats
+
+  };
+}
+
+async function startSession(
+  deck,
+  questions,
+  allStats = false
+) {
+
+  if (!questions.length) return;
+
+  const old = await localGet(
+    sessionKey()
+  );
+
+  if (
+
+    old &&
+
+    old.index < old.questionIds.length &&
+
+    !confirm(
+      "前回の演習進捗を置き換えますか？"
+    )
+
+  ) return;
+
+  session = {
+
+    deck,
+
+    questions: [...questions],
+
+    index: 0,
+
+    correct: 0,
+
+    wrong: [],
+
+    revealed: false,
+
+    allStats,
+
+    loadedBlocks: new Set()
+
+  };
+
+  await localPut(
+
+    sessionKey(),
+
+    serializeSession(session)
+
+  );
+
+  await prepareBlock();
+
+  await renderQuiz();
+}
+
+async function resumeSession() {
+
+  const saved = await localGet(
+    sessionKey()
+  );
+
+  if (!saved) return;
+
+  const deck = await loadDeck(
+    saved.deckId
+  );
+
+  const all = await loadQuestions(
+    deck
+  );
+
+  const map = new Map(
+
+    all.map(q => [q.id, q])
+
+  );
+
+  const questions = saved.questionIds.map(
+
+    id => map.get(id)
+
+  );
+
+  if (questions.some(q => !q)) {
+
+    throw new Error(
+
+      "演習対象の問題が削除されています。" +
+
+      "新しい演習を開始してください。"
+
+    );
+  }
+
+  if (
+
+    saved.revision !== undefined &&
+
+    saved.revision !==
+      (deck.contentVersion || "") &&
+
+    !confirm(
+
+      "演習中に問題集が改訂されています。" +
+
+      "現在の問題内容で再開しますか？"
+
+    )
+
+  ) return;
+
+  session = {
+
+    deck,
+
+    questions,
+
+    index: saved.index,
+
+    correct: saved.correct,
+
+    wrong: saved.wrongIds
+
+      .map(id => map.get(id))
+
+      .filter(Boolean),
+
+    revealed: saved.revealed,
+
+    allStats: saved.allStats,
+
+    loadedBlocks: new Set()
+
+  };
+
+  await prepareBlock();
+
+  await renderQuiz();
+}
+
+async function prepareBlock() {
+
+  const s = session;
+
+  if (
+    !s ||
+    s.index >= s.questions.length
+  ) return;
+
+  const block = s.allStats
+
+    ? 0
+
+    : Math.floor(
+        s.index / CONFIG.STATS_BLOCK
+      );
+
+  if (s.loadedBlocks.has(block)) return;
+
+  const start =
+    block * CONFIG.STATS_BLOCK;
+
+  const items = s.allStats
+
+    ? s.questions
+
+    : s.questions.slice(
+
+        start,
+
+        start + CONFIG.STATS_BLOCK
+
+      );
+
+  if (online()) {
+
+    notify(
+      `成績を先読みしています：${items.length}問`
+    );
+  }
+
+  await preloadStatistics(
+    s.deck,
+    items
+  );
+
+  s.loadedBlocks.add(block);
+}
+
+
+/* ==========================================
+   成績表示
+========================================== */
+
+function accuracy(data) {
+
+  const sum =
+    data.correct + data.incorrect;
+
+  if (!sum) return "—";
+
+  return Math.round(
+
+    data.correct / sum * 100
+
+  ) + "%";
+}
+
+function statsPanel(stats) {
+
+  const panel = el(
+    "div",
+    "quiz-stats"
+  );
+
+  if (!stats) {
+
+    panel.append(
+
+      el(
+
+        "span",
+
+        "muted",
+
+        "過去の成績：未取得"
+
+      )
+
+    );
+
+    return panel;
+  }
+
+  const personal = el("span");
+
+  personal.append(
+
+    el(
+      "span",
+      "muted",
+      "自分："
+    ),
+
+    el(
+
+      "strong",
+
+      "quiz-correct",
+
+      stats.personal.correct
+
+    ),
+
+    document.createTextNode("/"),
+
+    el(
+
+      "strong",
+
+      "quiz-incorrect",
+
+      stats.personal.incorrect
+
+    ),
+
+    document.createTextNode(
+
+      ` (${accuracy(stats.personal)})`
+
+    )
+
+  );
+
+  panel.append(
+
+    personal,
+
+    el(
+
+      "span",
+
+      "quiz-stats-total",
+
+      `全体：${accuracy(stats.total)}`
+
+    )
+
+  );
+
+  return panel;
+}
+
+
+/* ==========================================
+   演習画面
+========================================== */
+
+async function renderQuiz(
+  preserveScroll = false
+) {
+
+  if (!session) return;
+
+  if (
+    session.index >=
+    session.questions.length
+  ) {
+
+    await renderResult();
+
+    return;
+  }
+
+  const s = session;
+
+  const q = s.questions[s.index];
+
+  const oldScroll = main.scrollTop;
+
+  main.replaceChildren();
+
+  footer.hidden = false;
+
+  const wrap = el("div", "quiz");
+
+  const heading = el(
+    "div",
+    "toolbar"
+  );
+
+  heading.append(
+
+    el("strong", "", s.deck.name),
+
+    el(
+
+      "span",
+
+      "quiz-progress",
+
+      `${s.index + 1} / ${s.questions.length}`
+
+    ),
+
+    button("演習終了", async () => {
+
+      if (!confirm(
+
+        "演習を中断しますか？途中から再開できます。"
+
+      )) return;
+
+      session = null;
+
+      if (online()) {
+
+        syncPending().catch(showError);
+      }
+
+      await renderPracticeSetup(
+        s.deck.id
+      );
+
+    }, "secondary")
+
+  );
+
+  const track = el(
+    "div",
+    "progress-track"
+  );
+
+  const bar = el(
+    "div",
+    "progress-bar"
+  );
+
+  bar.style.width =
+
+    `${s.index / s.questions.length * 100}%`;
+
+  track.append(bar);
+
+  const card = el(
+    "section",
+    "quiz-card"
+  );
+
+  const tags = el(
+    "div",
+    "quiz-tags"
+  );
+
+  tags.append(
+
+    el(
+      "span",
+      "tag",
+      `単元：${q.unit}`
+    ),
+
+    el(
+      "span",
+      "tag",
+      `重要度：${q.importance}`
+    )
+
+  );
+
+  const stats = statsMemory.get(
+
+    statisticsKey(
+      s.deck.id,
+      q.id
+    )
+
+  )?.value;
+
+  card.append(
+
+    tags,
+
+    statsPanel(stats),
+
+    el(
+
+      "div",
+
+      "quiz-question",
+
+      q.question
+
+    )
+
+  );
+
+  quizButtons.replaceChildren();
+
+  if (!s.revealed) {
+
+    quizButtons.append(
+
+      button("解答を表示", async () => {
+
+        const next = {
+
+          ...s,
+
+          revealed: true
+
+        };
+
+        await localPut(
+
+          sessionKey(),
+
+          serializeSession(next)
+
+        );
+
+        session = next;
+
+        await renderQuiz(true);
+
+      })
+
+    );
+
+  } else {
+
+    const answer = el(
+      "div",
+      "quiz-answer"
+    );
+
+    answer.append(
+
+      el("div", "muted", "解答"),
+
+      el(
+
+        "div",
+
+        "answer-text",
+
+        q.answer
+
+      )
+
+    );
+
+    if (q.explanation) {
+
+      answer.append(
+
+        el("h3", "", "解説"),
+
+        el(
+
+          "p",
+
+          "explanation",
+
+          q.explanation
+
+        )
+
+      );
+    }
+
+    card.append(answer);
+
+    quizButtons.append(
+
+      button(
+
+        "× 不正解",
+
+        () => grade(false),
+
+        "danger"
+
+      ),
+
+      button(
+
+        "○ 正解",
+
+        () => grade(true),
+
+        "success"
+
+      )
+
+    );
+  }
+
+  wrap.append(
+
+    heading,
+
+    track,
+
+    card
+
+  );
+
+  main.append(wrap);
+
+  main.scrollTop = preserveScroll
+
+    ? oldScroll
+
+    : 0;
+
+  updateSyncStatus();
+}
+
+
+/* ==========================================
+   自己採点
+
+   成績と進捗をIndexedDBへ一括保存
+========================================== */
+
+async function grade(correct) {
+
+  if (!session || !session.revealed) return;
+
+  const s = session;
+
+  const q = s.questions[s.index];
+
+  const event = {
+
+    id: newId(),
+
+    uid: uid(),
+
+    deckId: s.deck.id,
+
+    questionId: q.id,
+
+    correct,
+
+    time: Date.now()
+
+  };
+
+  const next = {
+
+    ...s,
+
+    index: s.index + 1,
+
+    correct:
+      s.correct + (correct ? 1 : 0),
+
+    wrong: correct
+
+      ? [...s.wrong]
+
+      : [...s.wrong, q],
+
+    revealed: false
+
+  };
+
+  const entries = [
+
+    [outboxKey(event), event],
+
+    [sessionKey(), serializeSession(next)]
+
+  ];
+
+  const key = statisticsKey(
+
+    s.deck.id,
+
+    q.id
+
+  );
+
+  const cached = statsMemory.get(key);
+
+  let updated = null;
+
+  if (cached) {
+
+    updated = {
+
+      time: cached.time,
+
+      value: {
+
+        personal: {
+
+          ...cached.value.personal
+
+        },
+
+        total: {
+
+          ...cached.value.total
+
+        }
+
+      }
+
+    };
+
+    const countKey = correct
+
+      ? "correct"
+
+      : "incorrect";
+
+    updated.value.personal[countKey]++;
+
+    updated.value.total[countKey]++;
+
+    if (canOffline(s.deck)) {
+
+      entries.push([
+        key,
+        updated
+      ]);
+    }
+  }
+
+  await localWrite(entries);
+
+  if (updated) {
+
+    statsMemory.set(
+      key,
+      updated
+    );
+  }
+
+  session = next;
+
+  pendingCount++;
+
+  updateSyncStatus();
+
+  if (
+
+    pendingCount >= CONFIG.SYNC_THRESHOLD &&
+
+    online()
+
+  ) {
+
+    syncPending().catch(showError);
+  }
+
+  await prepareBlock();
+
+  await renderQuiz();
+}
+
+
+/* ==========================================
+   演習結果
+========================================== */
+
+async function renderResult() {
+
+  if (!session) return;
+
+  const finished = session;
+
+  await localDelete(
+    sessionKey()
+  );
+
+  session = null;
+
+  if (online()) {
+
+    syncPending().catch(showError);
+  }
+
+  const content = page("演習結果");
+
+  const panel = el("section", "panel");
+
+  const total = finished.questions.length;
+
+  const percent = total
+
+    ? Math.round(
+        finished.correct / total * 100
+      )
+
+    : 0;
+
+  panel.append(
+
+    el(
+
+      "p",
+
+      "muted",
+
+      finished.deck.name
+
+    ),
+
+    el(
+
+      "div",
+
+      "result-number",
+
+      `${percent}%`
+
+    )
+
+  );
+
+  const grid = el(
+    "div",
+    "stats-grid"
+  );
+
+  for (const [name, value] of [
+
+    ["正解", finished.correct],
+
+    ["不正解", finished.wrong.length]
+
+  ]) {
+
+    const box = el(
+      "div",
+      "stat-box"
+    );
+
+    box.append(
+
+      el("span", "muted", name),
+
+      el(
+
+        "div",
+
+        "stat-number",
+
+        value
+
+      )
+
+    );
+
+    grid.append(box);
+  }
+
+  panel.append(grid);
+
+  const actions = el(
+    "div",
+    "actions"
+  );
+
+  if (finished.wrong.length) {
+
+    actions.append(
+
+      button(
+
+        `間違えた${finished.wrong.length}問を再演習`,
+
+        async () => {
+
+          const latest = await loadDeck(
+
+            finished.deck.id
+
+          );
+
+          const current = await loadQuestions(
+
+            latest
+
+          );
+
+          const ids = new Set(
+
+            finished.wrong.map(q => q.id)
+
+          );
+
+          const items = current.filter(
+
+            q => ids.has(q.id)
+
+          );
+
+          if (!items.length) {
+
+            throw new Error(
+              "再演習できる問題がありません。"
+            );
+          }
+
+          await startSession(
+
+            latest,
+
+            items
+
+          );
+        }
+
+      )
+
+    );
+  }
+
+  actions.append(
+
+    button(
+
+      "演習条件に戻る",
+
+      () => renderPracticeSetup(
+        finished.deck.id
+      ),
+
+      "secondary"
+
+    ),
+
+    button(
+
+      "ホーム",
+
+      () => navigate("home"),
+
+      "secondary"
+
+    )
+
+  );
+
+  panel.append(
+
+    el(
+
+      "p",
+
+      "muted",
+
+      "学習成績は端末内に保存され、順次同期されます。"
+
+    ),
+
+    actions
+
+  );
+
+  content.append(panel);
+
+  for (const q of finished.wrong) {
+
+    const item = el(
+      "section",
+      "panel"
+    );
+
+    item.append(
+
+      el(
+
+        "strong",
+
+        "",
+
+        q.question
+
+      ),
+
+      el(
+
+        "p",
+
+        "",
+
+        `解答：${q.answer}`
+
+      )
+
+    );
+
+    content.append(item);
+  }
+}
+
+
+/* ==========================================
+   問題別成績一覧
+========================================== */
+
+async function renderStatistics(id) {
+
+  const deck = await loadDeck(id);
+
+  const questions = await loadQuestions(deck);
+
+  const content = page(
+
+    "問題別成績",
+
+    button(
+
+      "演習",
+
+      () => renderPracticeSetup(id)
+
+    )
+
+  );
+
+  const panel = el("section", "panel");
+
+  const actions = el("div", "actions");
+
+  const wrap = el("div", "table-wrap");
+
+  const indicator = el("span", "muted");
+
+  const pageSize = 50;
+
+  let current = 0;
+
+  const pages = Math.max(
+
+    1,
+
+    Math.ceil(
+      questions.length / pageSize
+    )
+
+  );
+
+  async function draw(force = false) {
+
+    wrap.textContent = "読み込み中…";
+
+    const group = questions.slice(
+
+      current * pageSize,
+
+      (current + 1) * pageSize
+
+    );
+
+    await preloadStatistics(
+
+      deck,
+
+      group,
+
+      force
+
+    );
+
+    const table = el("table");
+
+    const head = el("tr");
+
+    for (const title of [
+
+      "問題",
+
+      "単元",
+
+      "重要度",
+
+      "自分",
+
+      "全体"
+
+    ]) {
+
+      head.append(
+        el("th", "", title)
+      );
+    }
+
+    const thead = el("thead");
+
+    thead.append(head);
+
+    table.append(thead);
+
+    const tbody = el("tbody");
+
+    for (const q of group) {
+
+      const row = el("tr");
+
+      const stats = statsMemory.get(
+
+        statisticsKey(id, q.id)
+
+      )?.value;
+
+      const personal = stats
+
+        ? `${stats.personal.correct}/` +
+
+          `${stats.personal.incorrect} ` +
+
+          `(${accuracy(stats.personal)})`
+
+        : "未取得";
+
+      const total = stats
+
+        ? accuracy(stats.total)
+
+        : "未取得";
+
+      for (const value of [
+
+        q.question,
+
+        q.unit,
+
+        q.importance,
+
+        personal,
+
+        total
+
+      ]) {
+
+        row.append(
+          el("td", "", value)
+        );
+      }
+
+      tbody.append(row);
+    }
+
+    table.append(tbody);
+
+    wrap.replaceChildren(table);
+
+    indicator.textContent =
+
+      `${current + 1}/${pages}`;
+  }
+
+  actions.append(
+
+    button("前へ", async () => {
+
+      current = Math.max(
+        0,
+        current - 1
+      );
+
+      await draw();
+
+    }, "secondary"),
+
+    indicator,
+
+    button("次へ", async () => {
+
+      current = Math.min(
+        pages - 1,
+        current + 1
+      );
+
+      await draw();
+
+    }, "secondary"),
+
+    button(
+
+      "成績を更新",
+
+      () => draw(true),
+
+      "secondary"
+
+    )
+
+  );
+
+  panel.append(
+
+    el("h2", "", deck.name),
+
+    actions,
+
+    wrap
+
+  );
+
+  content.append(panel);
+
+  await draw();
+}
+
+
+/* ==========================================
+   設定
+========================================== */
+
+async function renderSettings() {
+
+  const content = page("設定");
+
+  const account = el(
+    "section",
+    "panel"
+  );
+
+  account.append(
+
+    el("h2", "", "アカウント"),
+
+    el(
+
+      "p",
+
+      "",
+
+      `ニックネーム：${profile.nickname}`
+
+    ),
+
+    el(
+
+      "p",
+
+      "",
+
+      `メールアドレス：${user.email}`
+
+    ),
+
+    button("パスワードを再設定", async () => {
+
+      await sendPasswordResetEmail(
+
+        auth,
+
+        user.email
+
+      );
+
+      notify(
+        "再設定メールの送信を受け付けました。"
+      );
+
+    }, "secondary")
+
+  );
+
+  content.append(account);
+
+  await refreshPending();
+
+  const syncPanel = el(
+    "section",
+    "panel"
+  );
+
+  syncPanel.append(
+
+    el("h2", "", "データ同期"),
+
+    el(
+
+      "p",
+
+      "",
+
+      `未同期記録：${pendingCount}件`
+
+    ),
+
+    el(
+
+      "p",
+
+      "muted",
+
+      online()
+
+        ? "オンライン"
+
+        : "オフライン"
+
+    ),
+
+    button("今すぐ同期", async () => {
+
+      await syncPending();
+
+      await renderSettings();
+
+    })
+
+  );
+
+  if (syncError) {
+
+    syncPanel.append(
+
+      el(
+
+        "p",
+
+        "red",
+
+        syncError
+
+      )
+
+    );
+  }
+
+  content.append(syncPanel);
+
+  const stats = el(
+    "section",
+    "panel"
+  );
+
+  stats.append(
+
+    el("h2", "", "通信統計"),
+
+    el(
+
+      "p",
+
+      "muted",
+
+      "アプリ側の計測値です。" +
+
+      "Firestoreの実際の課金件数とは異なります。"
+
+    )
+
+  );
+
+  const grid = el(
+    "div",
+    "stats-grid"
+  );
+
+  for (const [name, value] of [
+
+    ["読み取り要求", debug.readRequests],
+
+    ["読み取り件数", debug.readDocuments],
+
+    ["書き込み件数", debug.writeDocuments],
+
+    ["キャッシュ利用", debug.cacheHits]
+
+  ]) {
+
+    const box = el(
+      "div",
+      "stat-box"
+    );
+
+    box.append(
+
+      el("span", "muted", name),
+
+      el(
+        "div",
+        "stat-number",
+        value
+      )
+
+    );
+
+    grid.append(box);
+  }
+
+  const actions = el(
+    "div",
+    "actions"
+  );
+
+  actions.append(
+
+    button(
+
+      "表示を更新",
+
+      renderSettings,
+
+      "secondary"
+
+    ),
+
+    button("計測リセット", async () => {
+
+      window.MONDAI_DEBUG.reset();
+
+      await renderSettings();
+
+    }, "secondary")
+
+  );
+
+  stats.append(
+    grid,
+    actions
+  );
+
+  content.append(stats);
+
+  const storage = el(
+    "section",
+    "panel"
+  );
+
+  storage.append(
+
+    el("h2", "", "端末内データ"),
+
+    el(
+
+      "p",
+
+      "muted",
+
+      "未同期記録を除き、問題・成績キャッシュを消去します。"
+
+    ),
+
+    button("キャッシュを消去", async () => {
+
+      if (!confirm(
+
+        "端末内のキャッシュを消去しますか？"
+
+      )) return;
+
+      const keys = [];
+
+      for (const prefix of [
+
+        `deck:${uid()}:`,
+
+        `questions:${uid()}:`,
+
+        `stats:${uid()}:`
+
+      ]) {
+
+        const records = await localPrefix(
+          prefix
+        );
+
+        keys.push(
+
+          ...records.map(record => record.key)
+
+        );
+      }
+
+      await localWrite([], keys);
+
+      questionMemory.clear();
+
+      statsMemory.clear();
+
+      notify("キャッシュを消去しました。");
+
+    }, "secondary")
+
+  );
+
+  content.append(storage);
+
+  content.append(
+
+    el(
+
+      "p",
+
+      "muted",
+
+      `MONDAI Version ${VERSION}`
+
+    )
+
+  );
+}
+
+
+/* ==========================================
+   差分検知デバッグ機能
+========================================== */
+
+window.MONDAI_DEBUG.testDiff = function(
+  existing,
+  incoming
+) {
+
+  const matching = matchCSV(
+
+    existing,
+    incoming
+
+  );
+
+  const decisions = new Map(
+
+    matching.conflicts.map(
+
+      item => [item.index, null]
+
+    )
+
+  );
+
+  const plan = buildImportPlan(
+
+    existing,
+
+    incoming,
+
+    "sync",
+
+    matching,
+
+    decisions,
+
+    true
+
+  );
+
+  console.table(plan.details);
+
+  console.log(
+    "一致確認候補",
+    matching.conflicts
+  );
+
+  return plan;
+};
+
+
+/* ==========================================
+   Service Worker
+========================================== */
+
+if ("serviceWorker" in navigator) {
+
+  navigator.serviceWorker
+
+    .register("./sw.js?v=5.0")
+
+    .catch(error => {
+
+      console.warn(
+
+        "Service Worker登録失敗",
+
+        error
+
+      );
+    });
+}
+
+console.log(
+  `MONDAI ver${VERSION}`
+);
+
+console.log(
+  "通信統計：MONDAI_DEBUG.stats()"
+);
+
+console.log(
+  "計測リセット：MONDAI_DEBUG.reset()"
+);
+
+/* ==========================================
+   END
+========================================== */
