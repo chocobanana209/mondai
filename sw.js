@@ -1,20 +1,40 @@
 
 /* ==========================================
-   MONDAI v0.4
+   MONDAI ver5.0
    Service Worker
 ========================================== */
 
-const CACHE_NAME = "mondai-app-v04";
+const CACHE_NAME = "mondai-app-v50";
 
 const BASE = self.registration.scope;
 
+const INDEX_URL = new URL(
+
+  "./index.html",
+
+  BASE
+
+).href;
+
 const ASSETS = [
 
-  new URL("./index.html", BASE).href,
+  INDEX_URL,
 
-  new URL("./style.css?v=0.4", BASE).href,
+  new URL(
 
-  new URL("./script.js?v=0.4", BASE).href
+    "./style.css?v=5.0",
+
+    BASE
+
+  ).href,
+
+  new URL(
+
+    "./script.js?v=5.0",
+
+    BASE
+
+  ).href
 
 ];
 
@@ -43,7 +63,9 @@ self.addEventListener("install", event => {
         CACHE_NAME
       );
 
-      await cache.addAll(ASSETS);
+      await cache.addAll(
+        ASSETS
+      );
 
       await Promise.allSettled(
 
@@ -60,12 +82,11 @@ self.addEventListener("install", event => {
     })()
 
   );
-
 });
 
 
 /* ==========================================
-   旧バージョンのキャッシュ削除
+   旧アプリキャッシュの整理
 ========================================== */
 
 self.addEventListener("activate", event => {
@@ -80,15 +101,21 @@ self.addEventListener("activate", event => {
 
         keys
 
-          .filter(key =>
+          .filter(
 
-            key.startsWith("mondai-app-") &&
+            key =>
 
-            key !== CACHE_NAME
+              key.startsWith("mondai-app-") &&
+
+              key !== CACHE_NAME
 
           )
 
-          .map(key => caches.delete(key))
+          .map(
+
+            key => caches.delete(key)
+
+          )
 
       );
 
@@ -97,8 +124,81 @@ self.addEventListener("activate", event => {
     })()
 
   );
-
 });
+
+
+/* ==========================================
+   ネットワーク優先
+========================================== */
+
+async function networkFirst(
+  request,
+  fallbackKey = request
+) {
+
+  const cache = await caches.open(
+    CACHE_NAME
+  );
+
+  try {
+
+    const response = await fetch(request);
+
+    if (response.ok) {
+
+      await cache.put(
+
+        fallbackKey,
+
+        response.clone()
+
+      );
+    }
+
+    return response;
+
+  } catch {
+
+    return (
+
+      await cache.match(fallbackKey)
+
+    ) || Response.error();
+  }
+}
+
+
+/* ==========================================
+   キャッシュ優先
+========================================== */
+
+async function cacheFirst(request) {
+
+  const cache = await caches.open(
+    CACHE_NAME
+  );
+
+  const cached = await cache.match(request);
+
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(request);
+
+  if (response.ok) {
+
+    await cache.put(
+
+      request,
+
+      response.clone()
+
+    );
+  }
+
+  return response;
+}
 
 
 /* ==========================================
@@ -114,7 +214,12 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
 
   const sameOrigin =
+
     url.origin === self.location.origin;
+
+  const insideApp =
+
+    request.url.startsWith(BASE);
 
   const firebaseModule =
 
@@ -124,12 +229,8 @@ self.addEventListener("fetch", event => {
       "/firebasejs/12.11.0/"
     );
 
-  const insideApp =
-    request.url.startsWith(BASE);
-
   /*
-    Firebaseのデータ通信や認証通信は
-    Service Workerでキャッシュしない。
+    HTMLは常に最新版を優先する。
   */
 
   if (
@@ -144,57 +245,22 @@ self.addEventListener("fetch", event => {
 
     event.respondWith(
 
-      (async () => {
+      networkFirst(
 
-        const cache = await caches.open(
-          CACHE_NAME
-        );
+        request,
 
-        try {
+        INDEX_URL
 
-          const response = await fetch(request);
-
-          if (response.ok) {
-
-            await cache.put(
-
-              new URL(
-                "./index.html",
-                BASE
-              ).href,
-
-              response.clone()
-
-            );
-
-          }
-
-          return response;
-
-        } catch {
-
-          return (
-
-            await cache.match(
-
-              new URL(
-                "./index.html",
-                BASE
-              ).href
-
-            )
-
-          ) || Response.error();
-
-        }
-
-      })()
+      )
 
     );
 
     return;
-
   }
+
+  /*
+    アプリ本体のCSS・JavaScript
+  */
 
   if (
 
@@ -208,82 +274,28 @@ self.addEventListener("fetch", event => {
 
     event.respondWith(
 
-      (async () => {
-
-        const cache = await caches.open(
-          CACHE_NAME
-        );
-
-        try {
-
-          const response = await fetch(request);
-
-          if (response.ok) {
-
-            await cache.put(
-
-              request,
-
-              response.clone()
-
-            );
-
-          }
-
-          return response;
-
-        } catch {
-
-          return (
-
-            await cache.match(request)
-
-          ) || Response.error();
-
-        }
-
-      })()
+      networkFirst(request)
 
     );
 
     return;
-
   }
+
+  /*
+    FirebaseのSDKだけをキャッシュ。
+
+    Firestoreデータや認証通信は
+    Service Workerでキャッシュしない。
+  */
 
   if (firebaseModule) {
 
     event.respondWith(
 
-      (async () => {
-
-        const cache = await caches.open(
-          CACHE_NAME
-        );
-
-        const cached = await cache.match(request);
-
-        if (cached) return cached;
-
-        const response = await fetch(request);
-
-        if (response.ok) {
-
-          await cache.put(
-
-            request,
-
-            response.clone()
-
-          );
-
-        }
-
-        return response;
-
-      })()
+      cacheFirst(request)
 
     );
-
   }
-
 });
+
+/* END */
