@@ -3,46 +3,38 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#17233e">
 
-  <title>MONDAI - 一問一答学習アプリ</title>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
 
-  <!-- ファビコン -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2317233e'/%3E%3Ctext x='32' y='45' font-size='38' font-weight='bold' text-anchor='middle' fill='white'%3EM%3C/text%3E%3C/svg%3E">
+  <meta name="theme-color" content="#16213b">
 
-  <!-- CSS -->
-  <link rel="stylesheet" href="./style.css">
+  <title>MONDAI</title>
+
+  <link rel="stylesheet" href="./style.css?v=0.4">
 </head>
 
 <body>
 
-  <!-- ヘッダー -->
-  <header class="header">
-    <a href="./" class="logo">
-      MONDAI<span> STUDY SYSTEM</span>
-    </a>
-
-    <div id="account"></div>
-  </header>
-
-  <!-- 通知 -->
-  <div id="notice" role="status" aria-live="polite"></div>
-
   <!-- ログイン画面 -->
+
   <section id="auth-screen" class="auth-screen">
+
     <div class="auth-card">
 
-      <h1>MONDAI</h1>
+      <h1 class="brand">MONDAI</h1>
 
       <p class="muted">
-        知識を積み重ねる、一問一答。
+        一問一答学習システム
       </p>
 
       <form id="auth-form">
 
         <label>
           メールアドレス
+
           <input
             id="email"
             type="email"
@@ -53,11 +45,11 @@
 
         <label>
           パスワード
+
           <input
             id="password"
             type="password"
             autocomplete="current-password"
-            minlength="6"
             required
           >
         </label>
@@ -67,17 +59,17 @@
         </button>
 
         <button
-          type="button"
           id="register"
+          type="button"
           class="secondary"
         >
           新規登録
         </button>
 
         <button
-          type="button"
           id="reset-password"
-          class="ghost"
+          type="button"
+          class="text-button"
         >
           パスワードを忘れた場合
         </button>
@@ -85,29 +77,34 @@
       </form>
 
     </div>
+
   </section>
 
-  <!-- ニックネーム設定画面 -->
+
+  <!-- ニックネーム設定 -->
+
   <section
     id="profile-screen"
     class="auth-screen"
     hidden
   >
+
     <div class="auth-card">
 
-      <h2>ニックネーム設定</h2>
+      <h1>ニックネーム設定</h1>
 
-      <p>
-        他のユーザーとのデッキ共有に使用します。
-        本名などの個人情報は避けてください。
+      <p class="muted">
+        MONDAIで使用する名前を設定してください。
       </p>
 
       <form id="profile-form">
 
         <label>
           ニックネーム
+
           <input
             id="nickname"
+            type="text"
             minlength="2"
             maxlength="24"
             required
@@ -115,23 +112,44 @@
         </label>
 
         <button type="submit">
-          登録する
+          登録
         </button>
 
       </form>
 
+      <button
+        id="profile-logout"
+        class="secondary"
+        type="button"
+      >
+        ログアウト
+      </button>
+
     </div>
+
   </section>
 
-  <!-- メインアプリ -->
-  <div id="app-screen" class="layout" hidden>
 
-    <!-- サイドバー -->
-    <aside class="sidebar" id="navigation">
+  <!-- アプリ本体 -->
 
-      <div class="nav-label">
-        LIBRARY
+  <div id="app-screen" hidden>
+
+    <!-- 固定ヘッダー -->
+
+    <header id="app-header">
+
+      <div class="brand">
+        MONDAI
       </div>
+
+      <div id="account"></div>
+
+    </header>
+
+
+    <!-- 固定メニューバー -->
+
+    <nav id="navigation" aria-label="メインメニュー">
 
       <button data-page="home">
         ホーム
@@ -153,40 +171,57 @@
         設定
       </button>
 
-    </aside>
+    </nav>
 
-    <!-- メインコンテンツ -->
+
+    <!-- 唯一の縦スクロール領域 -->
+
     <main id="main"></main>
 
-  </div>
 
-  <!-- デッキカードのテンプレート -->
-  <template id="deck-template">
+    <!-- 演習時の固定操作バー -->
 
-    <article class="deck-card">
+    <footer id="quiz-footer" hidden>
 
-      <div class="deck-heading">
+      <div class="sync-row">
 
-        <h3 class="deck-name"></h3>
+        <span id="sync-status">
+          同期済み
+        </span>
 
-        <span class="visibility"></span>
+        <button
+          id="sync-now"
+          type="button"
+          class="text-button"
+        >
+          今すぐ同期
+        </button>
 
       </div>
 
-      <p class="deck-meta muted"></p>
+      <div id="quiz-buttons"></div>
 
-      <div class="deck-actions"></div>
+    </footer>
 
-    </article>
+  </div>
 
-  </template>
 
-  <!-- フッター -->
-  <footer class="footer">
-    MONDAI / Study System
-  </footer>
+  <!-- 通知 -->
 
-  <!-- JavaScript：キャッシュ対策済み -->
-<script type="module" src="./script.js?v=0.3"></script>
+  <div
+    id="notice"
+    role="status"
+    aria-live="polite"
+    hidden
+  ></div>
+
+
+  <!-- アプリ本体 -->
+
+  <script
+    type="module"
+    src="./script.js?v=0.4"
+  ></script>
+
 </body>
 </html>
