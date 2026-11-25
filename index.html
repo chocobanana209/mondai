@@ -3,17 +3,14 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover"
-  >
-
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#16213b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
 
   <title>MONDAI</title>
 
-  <link rel="stylesheet" href="./style.css?v=0.4">
+  <link rel="stylesheet" href="./style.css?v=5.0">
 </head>
 
 <body>
@@ -26,102 +23,77 @@
 
       <h1 class="brand">MONDAI</h1>
 
-      <p class="muted">
-        一問一答学習システム
-      </p>
+      <p class="muted">一問一答学習システム</p>
 
       <form id="auth-form">
 
         <label>
           メールアドレス
-
-          <input
-            id="email"
-            type="email"
-            autocomplete="email"
-            required
-          >
+          <input id="email"
+                 type="email"
+                 autocomplete="email"
+                 required>
         </label>
 
         <label>
           パスワード
-
-          <input
-            id="password"
-            type="password"
-            autocomplete="current-password"
-            required
-          >
+          <input id="password"
+                 type="password"
+                 autocomplete="current-password"
+                 required>
         </label>
 
-        <button type="submit">
-          ログイン
-        </button>
+        <button type="submit">ログイン</button>
 
-        <button
-          id="register"
-          type="button"
-          class="secondary"
-        >
+        <button id="register"
+                type="button"
+                class="secondary">
           新規登録
         </button>
 
-        <button
-          id="reset-password"
-          type="button"
-          class="text-button"
-        >
+        <button id="reset-password"
+                type="button"
+                class="text-button">
           パスワードを忘れた場合
         </button>
 
       </form>
+
+      <p class="version">Version 5.0</p>
 
     </div>
 
   </section>
 
 
-  <!-- ニックネーム設定 -->
+  <!-- ニックネーム登録 -->
 
-  <section
-    id="profile-screen"
-    class="auth-screen"
-    hidden
-  >
+  <section id="profile-screen"
+           class="auth-screen"
+           hidden>
 
     <div class="auth-card">
 
       <h1>ニックネーム設定</h1>
 
-      <p class="muted">
-        MONDAIで使用する名前を設定してください。
-      </p>
-
       <form id="profile-form">
 
         <label>
           ニックネーム
-
-          <input
-            id="nickname"
-            type="text"
-            minlength="2"
-            maxlength="24"
-            required
-          >
+          <input id="nickname"
+                 type="text"
+                 minlength="2"
+                 maxlength="24"
+                 required>
         </label>
 
-        <button type="submit">
-          登録
-        </button>
+        <button type="submit">登録</button>
 
       </form>
 
-      <button
-        id="profile-logout"
-        class="secondary"
-        type="button"
-      >
+      <button id="profile-logout"
+              type="button"
+              class="secondary">
         ログアウト
       </button>
 
@@ -134,66 +106,43 @@
 
   <div id="app-screen" hidden>
 
-    <!-- 固定ヘッダー -->
-
     <header id="app-header">
 
-      <div class="brand">
-        MONDAI
-      </div>
+      <div class="brand">MONDAI</div>
 
       <div id="account"></div>
 
     </header>
 
-
-    <!-- 固定メニューバー -->
-
     <nav id="navigation" aria-label="メインメニュー">
 
-      <button data-page="home">
-        ホーム
-      </button>
+      <button data-page="home">ホーム</button>
 
-      <button data-page="mine">
-        マイデッキ
-      </button>
+      <button data-page="mine">マイデッキ</button>
 
-      <button data-page="public">
-        公開デッキ
-      </button>
+      <button data-page="public">公開デッキ</button>
 
-      <button data-page="shared">
-        共有デッキ
-      </button>
+      <button data-page="shared">共有デッキ</button>
 
-      <button data-page="settings">
-        設定
-      </button>
+      <button data-page="settings">設定</button>
 
     </nav>
 
-
-    <!-- 唯一の縦スクロール領域 -->
+    <!-- 中央のみ縦スクロール -->
 
     <main id="main"></main>
 
-
-    <!-- 演習時の固定操作バー -->
+    <!-- 演習操作バー -->
 
     <footer id="quiz-footer" hidden>
 
       <div class="sync-row">
 
-        <span id="sync-status">
-          同期済み
-        </span>
+        <span id="sync-status">同期済み</span>
 
-        <button
-          id="sync-now"
-          type="button"
-          class="text-button"
-        >
+        <button id="sync-now"
+                type="button"
+                class="text-button">
           今すぐ同期
         </button>
 
@@ -208,20 +157,15 @@
 
   <!-- 通知 -->
 
-  <div
-    id="notice"
-    role="status"
-    aria-live="polite"
-    hidden
-  ></div>
+  <div id="notice"
+       role="status"
+       aria-live="polite"
+       hidden>
+  </div>
 
-
-  <!-- アプリ本体 -->
-
-  <script
-    type="module"
-    src="./script.js?v=0.4"
-  ></script>
+  <script type="module"
+          src="./script.js?v=5.0">
+  </script>
 
 </body>
 </html>
